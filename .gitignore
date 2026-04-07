@@ -1,0 +1,17 @@
+# Ignore build artifacts from Cargo
+/target/
+
+# Keep the Cargo.lock file for reproducible builds
+# (Though some apps prefer to ignore it, keep it for now)
+# /Cargo.lock
+
+# Log files
+*.log
+
+# Workspace metadata
+.rsconfig/
+.idea/
+.vscode/
+
+# MacOS specific
+.DS_Store

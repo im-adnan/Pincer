@@ -1,6 +1,6 @@
 #  Pincer Build & Integration Guide
 
-This document outlines how to compile the Pincer Rust engine into a standalone binary and eventually integrate it as the core download engine for Downly. 
+This document outlines how to compile the Pincer Rust engine into a standalone binary and eventually integrate it as the core download engine for Sluice. 
 
 ## 1. Prerequisites (Installing Rust)
 
@@ -32,7 +32,7 @@ cargo run
 ```
 
 ### For Production (Max Performance & Binary Creation)
-To create the highly optimized standalone binary that you will package with Downly:
+To create the highly optimized standalone binary that you will package with Sluice:
 ```bash
 cargo build --release
 ```
@@ -42,16 +42,16 @@ Once the compilation finishes, your executable will be located here:
 
 ---
 
-## 3. Integrating with Downly (Future Steps)
+## 3. Integrating with Sluice (Future Steps)
 
-When you are ready to replace Aria2 in Downly with Pincer, follow these steps:
+When you are ready to replace Aria2 in Sluice with Pincer, follow these steps:
 
 ### A. Bundling the Binary
 1. Copy the compiled `target/release/pincer` executable.
-2. Drag and drop it into your Downly Xcode project (make sure it's added to the target bundle).
+2. Drag and drop it into your Sluice Xcode project (make sure it's added to the target bundle).
 
 ### B. Launching Pincer via Swift
-Instead of spawning the `aria2c` process, you will spawn the `pincer` process. In your Downly `App` or `ViewModel` lifecycle, you use Swift's `Process` (sometimes encapsulated in your existing daemon manager) to launch it:
+Instead of spawning the `aria2c` process, you will spawn the `pincer` process. In your Sluice `App` or `ViewModel` lifecycle, you use Swift's `Process` (sometimes encapsulated in your existing daemon manager) to launch it:
 
 ```swift
 let pincerProcess = Process()

@@ -1,10 +1,10 @@
 # Pincer: Rust Download Engine Plan
 
-Pincer is a high-performance, multithreaded download engine written in Rust, designed as a direct drop-in replacement for your existing Aria2-based backend in Downly.
+Pincer is a high-performance, multithreaded download engine written in Rust, designed as a direct drop-in replacement for your existing Aria2-based backend in Sluice.
 
 ## 1. Scope & Objective
 
-The goal is to develop a robust HTTP/HTTPS download engine in Rust that communicates over WebSockets using JSON-RPC, mimicking the data structures Downly currently expects but substituting `aria2.` for the `pin.` namespace.
+The goal is to develop a robust HTTP/HTTPS download engine in Rust that communicates over WebSockets using JSON-RPC, mimicking the data structures Sluice currently expects but substituting `aria2.` for the `pin.` namespace.
 
 **Core Capabilities Focus**:
 - Regular HTTP/HTTPS downloads.

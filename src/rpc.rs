@@ -39,21 +39,33 @@ async fn handle_socket(
 ) {
     let (mut sender, mut receiver) = socket.split();
     
-    // Broadcast loop: sends global events to this client
-    let mut rx_guard = rx.clone();
-    let mut rx_chan = rx_guard.lock().await;
-
-    // We can't trivially multiplex tx and rx without tokio::select in a loop, so we'll 
-    // setup a straightforward event loop for this socket.
-    
-    // A simplified loop just to handle inbound RPC
-    while let Some(Ok(Message::Text(text))) = receiver.next().await {
-        if let Ok(req) = serde_json::from_str::<RPCRequest>(&text) {
-            let id = req.id.clone();
-            let response = handle_method(req, &manager).await;
-            if let Ok(json_res) = serde_json::to_string(&response) {
-                let _ = sender.send(Message::Text(json_res)).await;
+    // Handle inbound RPC messages (Text or Binary)
+    while let Some(msg_res) = receiver.next().await {
+        if let Ok(msg) = msg_res {
+            let text = match msg {
+                Message::Text(t) => Some(t),
+                Message::Binary(b) => String::from_utf8(b).ok(),
+                Message::Close(_) => break,
+                _ => None,
+            };
+            
+            if let Some(text) = text {
+                println!("Received RPC: {}", text);
+                if let Ok(req) = serde_json::from_str::<RPCRequest>(&text) {
+                    let response = handle_method(req, &manager).await;
+                    if let Ok(json_res) = serde_json::to_string(&response) {
+                        // Ignore frequent polling methods for logging purposes
+                        if !text.contains("tellActive") && !text.contains("tellWaiting") && !text.contains("tellStopped") {
+                            println!("Sending Response: {}", json_res);
+                        }
+                        let _ = sender.send(Message::Text(json_res)).await;
+                    }
+                } else {
+                    println!("Failed to parse RPC request");
+                }
             }
+        } else {
+            break; // Socket error
         }
     }
 }
@@ -79,21 +91,69 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
             Some(serde_json::to_value(stat).unwrap())
         },
         "pin.addUri" => {
-            // Simplified: return an ID
             let id = uuid::Uuid::new_v4().to_string();
+            
+            // Extract the URL and options from the JSONRPC params
+            // params is typically: [["url1"], {"dir": "...", "out": "...", "split": "64"}]
+            if let Some(params) = &req.params {
+                if let Some(params_array) = params.as_array() {
+                    if params_array.len() >= 2 {
+                        let (uris_val, options_val) = if params_array.len() >= 3 && params_array[0].is_string() {
+                            // Format: ["token:secret", ["url"], {options}]
+                            (&params_array[1], &params_array[2])
+                        } else {
+                            // Format: [["url"], {options}]
+                            (&params_array[0], &params_array[1])
+                        };
+
+                        if let (Some(uris), Some(options)) = (uris_val.as_array(), options_val.as_object()) {
+                            if let Some(first_uri) = uris.first().and_then(|v| v.as_str()) {
+                                let url = first_uri.to_string();
+                                let default_dir = std::env::var("HOME")
+                                    .map(|h| format!("{}/Downloads", h))
+                                    .unwrap_or_else(|_| "/tmp".to_string());
+
+                                let dir = options.get("dir")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_dir)
+                                    .to_string();
+                                
+                                // Determine filename (from "out" option, or fallback to URL leaf)
+                                let filename = options.get("out")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| {
+                                        url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string()
+                                    });
+
+                                let threads = options.get("split")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| s.parse::<usize>().ok())
+                                    .unwrap_or(4); // Default to 4 threads if not specified
+                                
+                                // Spawn the task in the background via the manager
+                                manager.spawn_task(id.clone(), url, filename, dir, threads).await;
+                            }
+                        }
+                    }
+                }
+            }
+            
             Some(serde_json::to_value(id).unwrap())
         },
         _ => None,
+    };
+
+    let error = if result.is_none() {
+        Some(RPCError { code: -32601, message: "Method not found".to_string() })
+    } else {
+        None
     };
 
     RPCResponse {
         id: req.id,
         jsonrpc: "2.0".to_string(),
         result,
-        error: if result.is_none() {
-            Some(RPCError { code: -32601, message: "Method not found".to_string() })
-        } else {
-            None
-        },
+        error,
     }
 }

@@ -196,6 +196,28 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                 None
             }
         },
+        "pin.removeAndFile" => {
+            if let Some(params) = &req.params {
+                if let Some(params_array) = params.as_array() {
+                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                        params_array.get(1).and_then(|v| v.as_str())
+                    } else {
+                        params_array.get(0).and_then(|v| v.as_str())
+                    };
+
+                    if let Some(gid) = gid {
+                        let success = manager.remove_task_and_file(gid).await;
+                        Some(serde_json::to_value(success).unwrap())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        },
         "pin.forceRemove" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {

@@ -150,10 +150,12 @@ impl DownloadManager {
     }
 
     pub async fn pause_all_tasks(&self) {
-        let tasks = self.tasks.read().await;
-        for control in tasks.values() {
+        let mut tasks = self.tasks.write().await;
+        for (gid, control) in tasks.iter_mut() {
             if control.status.status == "active" || control.status.status == "waiting" {
                 control.token.cancel();
+                control.status.status = "paused".to_string();
+                let _ = self.tx.send(self.build_notification("pin.onDownloadPause", gid));
             }
         }
     }
@@ -209,6 +211,28 @@ impl DownloadManager {
         let mut tasks = self.tasks.write().await;
         if let Some(control) = tasks.remove(id) {
             control.token.cancel();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub async fn remove_task_and_file(&self, id: &str) -> bool {
+        let mut tasks = self.tasks.write().await;
+        if let Some(control) = tasks.remove(id) {
+            control.token.cancel();
+            
+            // Attempt to move files to trash
+            for file in &control.status.files {
+                let path = std::path::Path::new(&file.path);
+                if path.exists() {
+                    if let Err(e) = trash::delete(path) {
+                        eprintln!("[ERROR] Failed to move file to trash '{}': {}", file.path, e);
+                    } else {
+                        println!("[INFO] Moved to trash: {}", file.path);
+                    }
+                }
+            }
             true
         } else {
             false

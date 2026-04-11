@@ -4,6 +4,7 @@ use std::fs::File;
 use std::os::unix::fs::FileExt;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 pub struct DownloadWorker {
     pub id: usize,
@@ -12,6 +13,7 @@ pub struct DownloadWorker {
     pub end: u64,
     pub file: Arc<std::sync::Mutex<File>>,
     pub progress_tx: mpsc::Sender<(usize, u64)>, // (worker_id, bytes_downloaded_this_tick)
+    pub token: CancellationToken,
 }
 
 impl DownloadWorker {
@@ -26,6 +28,12 @@ impl DownloadWorker {
 
         let mut res = req.send().await.map_err(|e| e.to_string())?;
 
+        // If we requested a range, we expect 206 Partial Content.
+        // If the server returns 200 OK, it means it doesn't support ranges and is sending the whole file.
+        if self.start > 0 && res.status() == reqwest::StatusCode::OK {
+            return Err("Server does not support resuming (returned 200 OK instead of 206 Partial Content)".to_string());
+        }
+
         if !res.status().is_success() {
             return Err(format!("Server returned error: {}", res.status()));
         }
@@ -33,6 +41,11 @@ impl DownloadWorker {
         let mut current_offset = self.start;
 
         while let Some(chunk) = res.chunk().await.map_err(|e| e.to_string())? {
+            // Check for cancellation
+            if self.token.is_cancelled() {
+                return Ok(());
+            }
+
             let chunk_len = chunk.len() as u64;
             
             // Critical Section: Write chunk to disk safely

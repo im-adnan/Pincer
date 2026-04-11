@@ -13,3 +13,4 @@ futures = "0.3"
 uuid = { version = "1.6", features = ["v4"] }
 bytes = "1.5"
 tokio-stream = "0.1"
+tokio-util = "0.7.18"

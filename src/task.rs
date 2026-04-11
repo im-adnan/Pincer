@@ -1,23 +1,23 @@
 use reqwest::Client;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 use crate::worker::DownloadWorker;
 
 pub struct DownloadTask {
-    pub id: String,
     pub url: String,
     pub filename: String,
     pub save_path: String,
     pub threads: usize,
-    pub total_size: u64,
+    pub resume_offset: u64,
 }
 
 impl DownloadTask {
-    pub async fn start(self) -> Result<(u64, mpsc::Receiver<(usize, u64)>), String> {
+    pub async fn start(self, token: CancellationToken) -> Result<(u64, mpsc::Receiver<(usize, u64)>), String> {
         let client = Client::new();
 
         // Phase A: Discovery
@@ -51,7 +51,11 @@ impl DownloadTask {
             .open(path)
             .map_err(|e| format!("Failed to open file: {}", e))?;
         
-        file.set_len(content_length).map_err(|e| format!("Failed to allocate file size: {}", e))?;
+        // Only set length if we are not resuming or if file is smaller than expected
+        let current_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+        if current_len < content_length {
+            file.set_len(content_length).map_err(|e| format!("Failed to allocate file size: {}", e))?;
+        }
         
         // Wrap file in a mutex to safely share across worker threads for Unix write_at
         let shared_file = Arc::new(std::sync::Mutex::new(file));
@@ -59,13 +63,24 @@ impl DownloadTask {
         let (progress_tx, progress_rx) = mpsc::channel(100);
         
         // Phase C & D: Chunking and Spawning
-        let chunk_size = content_length / actual_threads as u64;
+        // When resuming, we still want to use multi-threading for the REMAINING part.
+        // Simplified approach: Divide the REMAINING bytes among threads.
+        let remaining_size = if self.resume_offset < content_length {
+            content_length - self.resume_offset
+        } else {
+            0
+        };
+
+        if remaining_size == 0 && self.resume_offset > 0 {
+             return Ok((content_length, progress_rx)); // Already done
+        }
+
+        let chunk_size = remaining_size / actual_threads as u64;
         let mut handles: Vec<JoinHandle<Result<(), String>>> = vec![];
 
         for i in 0..actual_threads {
-            let start = i as u64 * chunk_size;
+            let start = self.resume_offset + (i as u64 * chunk_size);
             let end = if i == actual_threads - 1 {
-                // Last chunk gets the remainder
                 content_length - 1
             } else {
                 start + chunk_size - 1
@@ -78,6 +93,7 @@ impl DownloadTask {
                 end,
                 file: shared_file.clone(),
                 progress_tx: progress_tx.clone(),
+                token: token.clone(),
             };
             
             let client_clone = client.clone();

@@ -20,15 +20,15 @@ async fn main() {
         let dir = std::env::current_dir().unwrap().to_str().unwrap().to_string();
         
         let task = crate::task::DownloadTask {
-            id: uuid::Uuid::new_v4().to_string(),
             url,
             filename,
             save_path: dir,
             threads: 4,
-            total_size: 0,
+            resume_offset: 0,
         };
         
-        match task.start().await {
+        let token = tokio_util::sync::CancellationToken::new();
+        match task.start(token).await {
             Ok((_, mut progress_rx)) => {
                 while let Some((_worker_id, _bytes_chunk)) = progress_rx.recv().await {
                     // Quick CLI progress print

@@ -282,12 +282,23 @@ impl DownloadManager {
 
     pub async fn get_task(&self, id: &str) -> Option<TaskStatus> {
         let tasks = self.tasks.read().await;
-        tasks.get(id).map(|c| c.status.clone())
+        tasks.get(id).map(|c| {
+            let mut status = c.status.clone();
+            status.download_speed = self.calculate_current_speed(c).to_string();
+            status
+        })
     }
 
     pub async fn get_active_tasks(&self) -> Vec<TaskStatus> {
         let tasks = self.tasks.read().await;
-        tasks.values().filter(|c| c.status.status == "active").map(|c| c.status.clone()).collect()
+        tasks.values()
+            .filter(|c| c.status.status == "active")
+            .map(|c| {
+                let mut status = c.status.clone();
+                status.download_speed = self.calculate_current_speed(c).to_string();
+                status
+            })
+            .collect()
     }
 
     pub async fn get_waiting_tasks(&self, _offset: usize, _num: usize) -> Vec<TaskStatus> {
@@ -311,7 +322,7 @@ impl DownloadManager {
             match control.status.status.as_str() {
                 "active" => {
                     active += 1;
-                    total_download_speed += control.status.download_speed.parse::<u64>().unwrap_or(0);
+                    total_download_speed += self.calculate_current_speed(control);
                 },
                 "waiting" | "paused" => waiting += 1,
                 "complete" | "error" | "removed" => stopped += 1,
@@ -409,6 +420,27 @@ impl DownloadManager {
             }
         }
         false
+    }
+
+    fn calculate_current_speed(&self, control: &TaskControl) -> u64 {
+        if control.status.status != "active" {
+            return 0;
+        }
+        
+        let now = std::time::Instant::now();
+        let elapsed = now.duration_since(control.last_update_time).as_secs_f64();
+        
+        let reported_speed = control.status.download_speed.parse::<u64>().unwrap_or(0);
+        
+        // If we recently got a chunk (within 1s), use the reported speed
+        if elapsed <= 1.0 {
+            return reported_speed;
+        }
+        
+        // Otherwise, recalculate based on wall-clock time since last chunk
+        let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
+        let bytes_diff = completed.saturating_sub(control.last_update_bytes);
+        (bytes_diff as f64 / elapsed) as u64
     }
 
     fn build_notification(&self, method: &str, gid: &str) -> String {

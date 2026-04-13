@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
 
@@ -9,12 +10,17 @@ struct TaskControl {
     status: TaskStatus,
     token: CancellationToken,
     options: HashMap<String, String>,
+    last_update_bytes: u64,
+    last_update_time: std::time::Instant,
 }
 
 pub struct DownloadManager {
     tasks: RwLock<HashMap<String, TaskControl>>,
     global_options: RwLock<HashMap<String, String>>,
     tx: broadcast::Sender<String>,
+    pub current_limit: Arc<AtomicU64>,
+    pub max_seen_speed: Arc<AtomicU64>,
+    pub active_threads: Arc<AtomicU64>,
 }
 
 impl DownloadManager {
@@ -24,6 +30,9 @@ impl DownloadManager {
             tasks: RwLock::new(HashMap::new()),
             global_options: RwLock::new(HashMap::new()),
             tx,
+            current_limit: Arc::new(AtomicU64::new(0)),
+            max_seen_speed: Arc::new(AtomicU64::new(10 * 1024 * 1024)), // Default 10MB/s for initial half half
+            active_threads: Arc::new(AtomicU64::new(0)),
         });
         (manager, rx)
     }
@@ -34,7 +43,13 @@ impl DownloadManager {
 
     pub async fn _add_task(&self, id: String, status: TaskStatus, token: CancellationToken, options: HashMap<String, String>) {
         let mut tasks = self.tasks.write().await;
-        tasks.insert(id.clone(), TaskControl { status, token, options });
+        tasks.insert(id.clone(), TaskControl { 
+            status, 
+            token, 
+            options,
+            last_update_bytes: 0,
+            last_update_time: std::time::Instant::now(),
+        });
         // Dispatch start event
         let _ = self.tx.send(self.build_notification("pin.onDownloadStart", &id));
     }
@@ -43,7 +58,19 @@ impl DownloadManager {
         let mut tasks = self.tasks.write().await;
         if let Some(control) = tasks.get_mut(id) {
             let current_completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
-            control.status.completed_length = (current_completed + downloaded_chunk).to_string();
+            let new_completed = current_completed + downloaded_chunk;
+            control.status.completed_length = new_completed.to_string();
+            
+            // Calculate speed every ~0.5s to 1s
+            let now = std::time::Instant::now();
+            let elapsed = now.duration_since(control.last_update_time).as_secs_f64();
+            if elapsed >= 0.5 {
+                let bytes_diff = new_completed - control.last_update_bytes;
+                let speed = (bytes_diff as f64 / elapsed) as u64;
+                control.status.download_speed = speed.to_string();
+                control.last_update_bytes = new_completed;
+                control.last_update_time = now;
+            }
         }
     }
 
@@ -82,6 +109,8 @@ impl DownloadManager {
                 status: initial_status, 
                 token: token.clone(),
                 options: opts,
+                last_update_bytes: 0,
+                last_update_time: std::time::Instant::now(),
             });
         }
         
@@ -97,6 +126,8 @@ impl DownloadManager {
                 save_path: dir,
                 threads,
                 resume_offset,
+                global_limit: manager_clone.current_limit.clone(),
+                active_threads: manager_clone.active_threads.clone(),
             };
 
             match task.start(token.clone()).await {
@@ -270,12 +301,35 @@ impl DownloadManager {
     }
 
     pub async fn get_global_stat(&self) -> GlobalStat {
-        let active = self.get_active_tasks().await.len();
-        let waiting = self.get_waiting_tasks(0, 0).await.len();
-        let stopped = self.get_stopped_tasks(0, 0).await.len();
+        let tasks = self.tasks.read().await;
+        let mut total_download_speed: u64 = 0;
+        let mut active = 0;
+        let mut waiting = 0;
+        let mut stopped = 0;
+
+        for control in tasks.values() {
+            match control.status.status.as_str() {
+                "active" => {
+                    active += 1;
+                    total_download_speed += control.status.download_speed.parse::<u64>().unwrap_or(0);
+                },
+                "waiting" | "paused" => waiting += 1,
+                "complete" | "error" | "removed" => stopped += 1,
+                _ => {}
+            }
+        }
+
+        let current_mode = {
+            let opts = self.global_options.read().await;
+            opts.get("speed-mode").cloned().unwrap_or_else(|| "max_bandwidth".to_string())
+        };
+
+        if (current_mode == "max_bandwidth" || current_mode == "max") && total_download_speed > self.max_seen_speed.load(Ordering::Relaxed) {
+             self.max_seen_speed.store(total_download_speed, Ordering::Relaxed);
+        }
 
         GlobalStat {
-            download_speed: "0".to_string(),
+            download_speed: total_download_speed.to_string(),
             upload_speed: "0".to_string(),
             num_active: active.to_string(),
             num_waiting: waiting.to_string(),
@@ -284,10 +338,35 @@ impl DownloadManager {
         }
     }
 
-    pub async fn change_global_option(&self, options: HashMap<String, String>) {
+    pub async fn change_global_option(self: &Arc<Self>, options: HashMap<String, String>) {
+        if let Some(mode) = options.get("speed-mode") {
+            match mode.as_str() {
+                "max_bandwidth" | "max" => {
+                    self.current_limit.store(0, Ordering::Relaxed);
+                },
+                "half_bandwidth" | "half" => {
+                    let peak = self.max_seen_speed.load(Ordering::Relaxed);
+                    // Use peak / 2, with a fallback floor of 1MB/s if peak is unknown
+                    let half_speed = std::cmp::max(peak / 2, 1024 * 1024);
+                    self.current_limit.store(half_speed, Ordering::Relaxed);
+                },
+                "min_bandwidth" | "min" => {
+                    // Refined min: Sub-kb/s limit, NO pause
+                    self.current_limit.store(768, Ordering::Relaxed); // 768 bytes/s is sub-kb
+                },
+                _ => {}
+            }
+        }
+
+        if let Some(limit_str) = options.get("max-overall-download-limit") {
+            if let Ok(limit) = limit_str.parse::<u64>() {
+                self.current_limit.store(limit, Ordering::Relaxed);
+            }
+        }
+
         let mut global_opts = self.global_options.write().await;
         for (k, v) in options {
-            global_opts.insert(k, v);
+            global_opts.insert(k.clone(), v.clone());
         }
     }
 

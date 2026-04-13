@@ -1,4 +1,5 @@
 use reqwest::Client;
+use std::sync::atomic::AtomicU64;
 use std::fs::OpenOptions;
 use std::path::Path;
 use std::sync::Arc;
@@ -14,6 +15,8 @@ pub struct DownloadTask {
     pub save_path: String,
     pub threads: usize,
     pub resume_offset: u64,
+    pub global_limit: Arc<AtomicU64>,
+    pub active_threads: Arc<AtomicU64>,
 }
 
 impl DownloadTask {
@@ -57,8 +60,8 @@ impl DownloadTask {
             file.set_len(content_length).map_err(|e| format!("Failed to allocate file size: {}", e))?;
         }
         
-        // Wrap file in a mutex to safely share across worker threads for Unix write_at
-        let shared_file = Arc::new(std::sync::Mutex::new(file));
+        // Wrap file in an Arc to safely share across worker threads for Unix write_at (thread-safe)
+        let shared_file = Arc::new(file);
 
         let (progress_tx, progress_rx) = mpsc::channel(100);
         
@@ -94,6 +97,8 @@ impl DownloadTask {
                 file: shared_file.clone(),
                 progress_tx: progress_tx.clone(),
                 token: token.clone(),
+                global_limit: self.global_limit.clone(),
+                active_threads: self.active_threads.clone(),
             };
             
             let client_clone = client.clone();

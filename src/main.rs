@@ -25,6 +25,8 @@ async fn main() {
             save_path: dir,
             threads: 4,
             resume_offset: 0,
+            global_limit: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            active_threads: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)), // 1 thread active in CLI
         };
         
         let token = tokio_util::sync::CancellationToken::new();

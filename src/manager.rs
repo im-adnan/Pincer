@@ -389,6 +389,16 @@ impl DownloadManager {
         let mut tasks = self.tasks.write().await;
         if let Some(control) = tasks.get_mut(id) {
             for (k, v) in options {
+                if k == "dir" {
+                    control.status.dir = v.clone();
+                    if let Some(file) = control.status.files.first_mut() {
+                        let file_name = std::path::Path::new(&file.path)
+                            .file_name()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| "download".to_string());
+                        file.path = format!("{}/{}", v, file_name);
+                    }
+                }
                 control.options.insert(k, v);
             }
             true

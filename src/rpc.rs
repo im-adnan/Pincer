@@ -264,7 +264,16 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                                 });
                                 let threads = options.get("split").and_then(|v| v.as_str()).and_then(|s| s.parse::<usize>().ok()).unwrap_or(4);
                                 
-                                manager.spawn_task(id.clone(), url, filename, dir, threads, 0).await;
+                                let mut headers = Vec::new();
+                                if let Some(header_str) = options.get("header").and_then(|v| v.as_str()) {
+                                    for line in header_str.split('\n') {
+                                        if !line.trim().is_empty() {
+                                            headers.push(line.trim().to_string());
+                                        }
+                                    }
+                                }
+                                
+                                manager.spawn_task(id.clone(), url, filename, dir, threads, 0, headers).await;
                             }
                         }
                     }

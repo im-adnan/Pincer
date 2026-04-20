@@ -74,7 +74,7 @@ impl DownloadManager {
         }
     }
 
-    pub async fn spawn_task(self: &Arc<Self>, id: String, url: String, filename: String, dir: String, threads: usize, resume_offset: u64) {
+    pub async fn spawn_task(self: &Arc<Self>, id: String, url: String, filename: String, dir: String, threads: usize, resume_offset: u64, headers: Vec<String>) {
         let token = CancellationToken::new();
         
         let completed_length = if resume_offset > 0 {
@@ -104,6 +104,9 @@ impl DownloadManager {
             opts.insert("dir".to_string(), dir.clone());
             opts.insert("out".to_string(), filename.clone());
             opts.insert("split".to_string(), threads.to_string());
+            if !headers.is_empty() {
+                opts.insert("header".to_string(), headers.join("\n"));
+            }
             
             tasks.insert(id.clone(), TaskControl { 
                 status: initial_status, 
@@ -126,6 +129,7 @@ impl DownloadManager {
                 save_path: dir,
                 threads,
                 resume_offset,
+                headers: headers.clone(),
                 global_limit: manager_clone.current_limit.clone(),
                 active_threads: manager_clone.active_threads.clone(),
             };
@@ -192,7 +196,7 @@ impl DownloadManager {
     }
 
     pub async fn unpause_task(self: &Arc<Self>, id: &str) -> bool {
-        let (url, filename, dir, resume_offset, threads) = {
+        let (url, filename, dir, resume_offset, threads, headers) = {
             let tasks = self.tasks.read().await;
             if let Some(control) = tasks.get(id) {
                 // If it's already active, don't start it again
@@ -209,13 +213,18 @@ impl DownloadManager {
                 let dir = control.status.dir.clone();
                 let resume_offset = control.status.completed_length.parse::<u64>().unwrap_or(0);
                 let threads = control.options.get("split").and_then(|s| s.parse::<usize>().ok()).unwrap_or(4);
-                (url, filename, dir, resume_offset, threads)
+                let headers: Vec<String> = if let Some(header_str) = control.options.get("header") {
+                    header_str.split('\n').filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string()).collect()
+                } else {
+                    Vec::new()
+                };
+                (url, filename, dir, resume_offset, threads, headers)
             } else {
                 return false;
             }
         };
 
-        self.spawn_task(id.to_string(), url, filename, dir, threads, resume_offset).await;
+        self.spawn_task(id.to_string(), url, filename, dir, threads, resume_offset, headers).await;
         true
     }
 

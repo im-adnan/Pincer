@@ -369,6 +369,39 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                 } else { None }
             } else { None }
         },
+        "pin.resolveUrl" => {
+            if let Some(params) = &req.params {
+                if let Some(params_array) = params.as_array() {
+                    let url = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                        params_array.get(1).and_then(|v| v.as_str())
+                    } else {
+                        params_array.get(0).and_then(|v| v.as_str())
+                    };
+
+                    if let Some(url) = url {
+                        match manager.resolve_url(url.to_string()).await {
+                            Ok((final_url, filename)) => {
+                                Some(json!({
+                                    "url": final_url,
+                                    "filename": filename
+                                }))
+                            },
+                            Err(e) => {
+                                Some(json!({
+                                    "error": e
+                                }))
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        },
         _ => None,
     };
 

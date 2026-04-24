@@ -3,6 +3,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{broadcast, RwLock};
 use tokio_util::sync::CancellationToken;
+use regex::Regex;
+use serde_json::Value;
 
 use crate::models::{TaskStatus, GlobalStat, NotificationParam, RPCNotification, FileData, FileUri};
 
@@ -471,5 +473,101 @@ impl DownloadManager {
             }],
         };
         serde_json::to_string(&notification).unwrap_or_default()
+    }
+
+    pub async fn resolve_url(&self, url: String) -> Result<(String, String), String> {
+        let client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        // 1. Standard Redirect Resolution (Current Logic)
+        let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
+        let final_url = response.url().to_string();
+        
+        let content_type = response.headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+
+        // If the result is already a direct video file, return it
+        if content_type.contains("video/") || 
+           final_url.split('?').next().unwrap_or("").ends_with(".mp4") || 
+           final_url.split('?').next().unwrap_or("").ends_with(".mkv") {
+            
+            let filename = response.headers()
+                .get(reqwest::header::CONTENT_DISPOSITION)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| {
+                    if let Some(idx) = s.find("filename=") {
+                        let part = &s[idx + 9..];
+                        let name = part.trim_matches('"');
+                        Some(name.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| {
+                    final_url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string()
+                });
+
+            return Ok((final_url, filename));
+        }
+
+        // 2. UNIVERSAL FALLBACK: Scrape HTML for metadata
+        if content_type.contains("text/html") {
+            let html = response.text().await.map_err(|e| e.to_string())?;
+
+            // A. Universal Meta Tags (OpenGraph / Twitter)
+            let og_video_re = Regex::new(r#"<meta property="(?:og:video|twitter:player)" content="(.*?)"#).unwrap();
+            let og_title_re = Regex::new(r#"<meta property="(?:og:title|twitter:title)" content="(.*?)"#).unwrap();
+
+            if let Some(caps) = og_video_re.captures(&html) {
+                let video_url = caps[1].to_string();
+                let title = og_title_re.captures(&html).map(|c| c[1].to_string()).unwrap_or_else(|| "download".to_string());
+                return Ok((video_url, format!("{}.mp4", title.replace(" ", "-"))));
+            }
+
+            // B. Universal JSON Script Extraction (Next.js, Nuxt, etc.)
+            let json_re = Regex::new(r#"<script[^>]*type="application/json"[^>]*>(.*?)</script>|<script id="__NEXT_DATA__"[^>]*>(.*?)</script>"#).unwrap();
+            let video_link_re = Regex::new(r#"https?://[^\s"\'<>]+?\.(?:mp4|mkv|webm|mov)(?:[^\s"\'<>]*?)"#).unwrap();
+            
+            let mut best_json_link: Option<(String, String)> = None;
+            for caps in json_re.captures_iter(&html) {
+                let json_content = caps.get(1).or(caps.get(2)).map(|m| m.as_str()).unwrap_or("");
+                if let Ok(data) = serde_json::from_str::<Value>(json_content) {
+                    // Heuristic: Search for video links within the JSON structure
+                    let json_str = data.to_string();
+                    let mut found_links: Vec<String> = video_link_re.find_iter(&json_str).map(|m| m.as_str().to_string()).collect();
+                    if !found_links.is_empty() {
+                        // Prioritize links that look like they belong to CDNs or are higher quality
+                        found_links.sort_by_key(|a| a.len());
+                        if let Some(link) = found_links.last() {
+                            best_json_link = Some((link.clone(), "download".to_string()));
+                            break; 
+                        }
+                    }
+                }
+            }
+            if let Some((link, _)) = best_json_link {
+                // Try to find a title in the HTML as well
+                let title = og_title_re.captures(&html).map(|c| c[1].to_string()).unwrap_or_else(|| "download".to_string());
+                let ext = link.split('?').next().unwrap_or("").split('.').last().unwrap_or("mp4").to_string();
+                return Ok((link, format!("{}.{}", title.replace(" ", "-"), ext)));
+            }
+
+            // C. Heuristic Regex Search in Full HTML
+            let mut links: Vec<String> = video_link_re.find_iter(&html).map(|m| m.as_str().to_string()).collect();
+            if !links.is_empty() {
+                links.sort_by_key(|a| a.len());
+                let best_link = links.last().unwrap();
+                let name = best_link.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin");
+                return Ok((best_link.to_string(), name.to_string()));
+            }
+        }
+
+        // Final fallback: use the final redirect URL
+        let filename = final_url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string();
+        Ok((final_url, filename))
     }
 }

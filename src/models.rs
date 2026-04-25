@@ -75,3 +75,15 @@ pub struct RPCNotification {
 pub struct NotificationParam {
     pub gid: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResolveResponse {
+    pub url: String,
+    pub filename: Option<String>,
+    #[serde(rename = "totalSize")]
+    pub total_size: Option<u64>,
+    #[serde(rename = "fileType")]
+    pub file_type: Option<String>,
+    #[serde(rename = "isResumable")]
+    pub is_resumable: Option<bool>,
+}

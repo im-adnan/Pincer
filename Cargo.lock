@@ -1011,6 +1011,7 @@ dependencies = [
  "axum",
  "bytes",
  "futures",
+ "percent-encoding",
  "regex",
  "reqwest",
  "serde",

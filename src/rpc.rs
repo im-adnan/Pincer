@@ -380,11 +380,8 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
 
                     if let Some(url) = url {
                         match manager.resolve_url(url.to_string()).await {
-                            Ok((final_url, filename)) => {
-                                Some(json!({
-                                    "url": final_url,
-                                    "filename": filename
-                                }))
+                            Ok(res) => {
+                                Some(serde_json::to_value(res).unwrap())
                             },
                             Err(e) => {
                                 Some(json!({

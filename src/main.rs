@@ -50,6 +50,6 @@ async fn main() {
     println!("Starting Pincer engine...");
     let (manager, rx) = DownloadManager::new();
     
-    // Start WebSocket server to listen for Sluice RPC
+    // Start WebSocket server to listen for RPC
     rpc::start_server(manager, rx).await;
 }

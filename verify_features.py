@@ -15,7 +15,7 @@ async def test_rpc():
                 "id": "add-1",
                 "method": "pin.addUri",
                 "params": [
-                    ["https://raw.githubusercontent.com/agalwood/Motrix/master/LICENSE"],
+                    ["https://raw.githubusercontent.com/agalwood/App/master/LICENSE"],
                     {"dir": "./", "out": "LICENSE_TEST", "split": "1"}
                 ]
             }

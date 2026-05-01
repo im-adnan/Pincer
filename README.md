@@ -1,51 +1,100 @@
-# Pincer: High-Performance Rust Download Engine
+Pincer - High-Performance Rust Download Engine
+============================================
 
-Pincer is a modern, multithreaded download engine written in Rust. It is designed to be a lightweight, safe, and high-performance replacement for the Aria2 featureset, specifically tailored for modern desktop applications.
+Disclaimer
+----------
+This program comes with no warranty.
+You must use this program at your own risk.
 
-## Key Features
+Introduction
+------------
 
-- **Concurrent Segmented Downloading**: Maximizes bandwidth by dividing files into chunks and downloading them across multiple parallel connections.
-- **Sequential Resume**: Efficiently continues downloads from exactly where they left off by utilizing HTTP Range headers.
-- **Sparse Writing**: Writes directly to specific file offsets using `write_at`, eliminating the need for temporary files or concatenation.
-- **Native Memory Safety**: Built in Rust to ensure memory safety and high concurrency without the overhead of older C-based engines.
-- **WebSocket JSON-RPC**: A clean, modern interface for real-time status updates and task management.
+Pincer is a modern, multithreaded download engine written in Rust. It is designed to be a lightweight, safe, and high-performance replacement for the Aria2 featureset, specifically tailored for modern desktop applications. 
 
-## Getting Started
+Like aria2, Pincer is a utility for downloading files. It supports concurrent segmented downloading, maximizing bandwidth by dividing files into chunks and downloading them across multiple parallel connections. Pincer ensures sequential resume, efficiently continuing downloads from exactly where they left off by utilizing HTTP Range headers. 
 
-### Prerequisites
+Features
+--------
 
-You will need the Rust toolchain installed to build Pincer.
+Here is a list of features:
+
+* Command-line interface
+* Download files through HTTP(S)
+* Concurrent Segmented downloading
+* Sequential Resume utilizing HTTP Range headers
+* Native Memory Safety through Rust
+* Sparse Writing using `write_at` for direct disk I/O
+* JSON-RPC (over WebSocket) interface for real-time status updates
+* 1:1 Feature parity mapping with standard Aria2 RPC commands
+* Multi-threaded Chunking and Worker Pool (Axel Pattern)
+* Global throughput stats management
+
+Versioning and release schedule
+-------------------------------
+
+We use standard semantic versioning (MAJOR.MINOR.PATCH) for Pincer releases. The MAJOR version will stay at 0 during the initial development and stabilization phase.
+
+How to get source code
+----------------------
+
+We maintain the source code in the Pincer project repository.
+To get the latest source code, navigate to the `pincer` directory:
+
+    $ cd path/to/pincer
+
+Dependency
+----------
+
+======================== ========================================
+features                  dependency
+======================== ========================================
+Core Runtime             Rust (rustc, cargo), tokio
+JSON-RPC Interface       axum
+======================== ========================================
+
+How to build
+------------
+
+Pincer is written in Rust. To build Pincer from the source package, you need the Rust toolchain installed.
 
 1. Install Rust:
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   ```
+    $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
 2. Reload your environment:
-   ```bash
-   source $HOME/.cargo/env
-   ```
+    $ source $HOME/.cargo/env
 
-### Building Pincer
+To run the engine directly for testing and debugging:
+    $ cargo run
 
-1. **For Development**: Run the engine directly for testing and debugging.
-   ```bash
-   cargo run
-   ```
-2. **For Production**: Compile a highly optimized standalone binary.
-   ```bash
-   cargo build --release
-   ```
-   The resulting binary will be at `target/release/pincer`.
+To compile a highly optimized standalone binary for production:
+    $ cargo build --release
 
-## Architecture
+After a release build, the executable is located at `target/release/pincer`.
+
+Command-line usage
+------------------
+
+For quick direct download tests without using the RPC server:
+    $ ./target/release/pincer "https://example.com/file.zip"
+
+This will download the file to the current directory using multiple threads by default.
+
+WebSocket / JSON-RPC
+--------------------
+
+Pincer features an integrated RPC layer powered by Axum, which handles incoming WebSocket connections and processes JSON-RPC commands. 
+The WebSocket server embedded in Pincer listens on port `6842` by default (`ws://127.0.0.1:6842/jsonrpc`).
+It implements a 1:1 mapping with Aria2's JSON-RPC interface. 
+
+Architecture
+------------
 
 Pincer is built on the `tokio` async runtime and consists of three primary layers:
-
 1. **RPC Layer (Axum)**: Handles incoming WebSocket connections and processes JSON-RPC commands.
 2. **Management Layer**: Tracks download states, provides thread-safe access to task metadata, and manages global throughput stats.
-3. **Worker Pool (Axel Pattern)**: Each task spawns multiple workers that independently fetch segments and perform non-blocking concurrent writes to the disk.
+3. **Worker Pool (Axel Pattern)**: Each task spawns multiple workers that independently fetch segments and perform non-blocking concurrent writes to the disk using zero-allocation writes.
 
-## Documentation Links
+References
+----------
 
-- **[API Reference](API_REFERENCE.md)**: Detailed JSON-RPC method documentation, providing 1:1 feature parity with standard Aria2 commands.
-- **[Sluice Integration](SLUICE_INTEGRATION.md)**: Specific instructions for integrating Pincer into the Sluice SwiftUI application.
+* `JSON-RPC API <docs/JSON_RPC_API.md>`_

@@ -1,0 +1,299 @@
+# Pincer Comprehensive Manual & API Reference
+
+This document consolidates all information regarding **Pincer** — a high-performance download engine written in Rust — including its configuration, JSON-RPC interface, Motrix compatibility, and feature comparison with aria2. It serves as the single source of truth for the project.
+
+---
+
+## 1. Command Line Interface (CLI) & Thread Control
+
+### Technical Architecture (Rust Backend)
+*   **Native Memory Safety**: Written entirely in Rust, preventing the segfaults and memory leaks common in C++ codebases[cite: 1, 2].
+*   **Async I/O Worker Pool**: Built on `tokio` for high-throughput, low-latency processing via a concurrent worker pool[cite: 2, 3].
+*   **Zero-Allocation Disk Writes**: On Unix-based systems, Pincer uses `write_at` to write data chunks directly to their final positions on disk, minimizing CPU overhead[cite: 3].
+*   **Range Support Detection**: Automatically detects if a server supports `Accept-Ranges`; if not supported, it gracefully falls back to single-threaded mode[cite: 3].
+
+### Thread Control in Pincer
+In **Pincer**, download threads are dynamically controlled **via the JSON-RPC interface** when adding or modifying a task using options like `split` (which defines the number of connections/threads per download) and `min-split-size`[cite: 1].
+
+### CLI Mode
+For quick testing without the RPC server:
+```bash
+./pincer "https://example.com/file.zip"
+```
+This downloads the file to the current directory using **4 threads** by default.
+
+**Current Limitations**:
+Pincer does not support command-line flags like `-v` (version), `-a`, `-f`, `-j`, etc. It is designed first and foremost as a background engine[cite: 1].
+
+**Comparison with Aria2**:
+    *   `-v` maps to `--version`.
+    *   `-V` maps to `--check-integrity`.
+    *   `-j` maps to `--max-concurrent-downloads`.
+    *   `-s` maps to `--split` (thread count).
+*   **In Pincer**:
+    *   The CLI mode is strictly a minimal stub for testing. If you run `./pincer <URL>`, it automatically hardcodes the download to use **4 threads** (`threads: 4` in `src/main.rs`) and downloads the file to the current directory[cite: 1, 3].
+    *   **To Be Added (Future Functionality)**: A full CLI argument parser (e.g., using `clap`) to support flags like `-v` (version), `-s` (threads), `-d` (directory), and `-c` (continue) for users who want to use Pincer exclusively from the terminal without the RPC server[cite: 1, 5].
+
+---
+
+## 2. Connection & Authentication
+
+- **Default Port**: `6842`
+- **WebSocket URL**: `ws://127.0.0.1:6842/jsonrpc`
+- **Protocol**: JSON-RPC 2.0
+
+### Authentication
+If an RPC secret is configured, pass it as the **first element** of the `params` array in the format `"token:YOUR_SECRET"`.
+
+**Example** (`pin.addUri`):
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "pin.addUri",
+  "id": "1",
+  "params": [
+    "token:mysecret",
+    ["https://example.com/file.zip"],
+    {"dir": "/downloads", "split": 8}
+  ]
+}
+```
+
+---
+
+## 3. Motrix Configuration & Default Settings
+
+Pincer is being developed to support the configuration keys passed by tools like Motrix.
+
+### Default Engine Configuration (`aria2.conf` style)[cite: 1, 5]
+
+**RPC**:
+- `enable-rpc=true`
+- `rpc-allow-origin-all=true`
+- `rpc-listen-all=true`
+
+**File System**:
+- `auto-save-interval=10`
+- `disk-cache=64M`
+- `file-allocation=none`
+- `no-file-allocation-limit=64M`
+- `save-session-interval=10`
+
+**Task Parameters**:
+- `check-certificate=false`
+- `max-file-not-found=10`
+- `max-tries=0`
+- `retry-wait=10`
+- `connect-timeout=10`
+- `timeout=10`
+- `min-split-size=1M`
+- `http-accept-gzip=true`
+- `remote-time=true`
+- `summary-interval=0`
+- `content-disposition-default-utf8=true`
+
+**BitTorrent Parameters** (for future support):
+- `bt-detach-seed-only=true`
+- `bt-enable-lpd=true`
+- `bt-hash-check-seed=true`
+- `bt-max-peers=128`
+- `bt-prioritize-piece=head`
+- `bt-remove-unselected-file=true`
+- `bt-seed-unverified=false`
+- `bt-tracker-connect-timeout=10`
+- `bt-tracker-timeout=10`
+- `enable-dht=true`
+- `enable-dht6=true`
+- `enable-peer-exchange=true`
+- `dht-entry-point=dht.transmissionbt.com:6881`
+- `dht-entry-point6=dht.transmissionbt.com:6881`
+- `peer-agent=Transmission/3.00`
+- `peer-id-prefix=-TR3000-`
+
+**Keys Requiring Engine Restart**:
+`rpc-listen-port`, `rpc-secret`, `listen-port`, `dht-listen-port`
+
+### Common Task Options
+- `dir` — Target directory
+- `out` — Output filename
+- `split` — Number of connections/threads
+- `max-connection-per-server` — Max connections per server
+- `min-split-size` — Minimum split size (e.g. `1M`)
+- `max-download-limit` — Speed limit per download
+- `header` — Custom HTTP headers
+- `user-agent` — Custom User-Agent
+
+---
+
+### User Preferences (UI / Application Level)
+These keys are tracked by the frontend and used for application-level state:
+`auto-check-update`, `auto-hide-window`, `auto-sync-tracker`, `cookie`, `enable-upnp`, `engine-bin-path`, `engine-max-connection-per-server`, `favorite-directories`, `hide-app-menu`, `history-directories`, `keep-seeding`, `keep-window-state`, `last-check-update-time`, `last-sync-tracker-time`, `locale`, `log-level`, `new-task-show-downloading`, `no-confirm-before-delete-task`, `open-at-login`, `protocols`, `proxy`, `resume-all-when-app-launched`, `run-mode`, `show-progress-bar`, `task-notification`, `theme`, `tracker-source`, `tray-speedometer`.
+
+---
+### System Keys (Global/Session Level)
+These keys map directly to global or task option updates (`pin.changeGlobalOption` or `pin.changeOption`):
+
+`all-proxy-passwd`, `all-proxy-user`, `all-proxy`, `allow-overwrite`, `allow-piece-length-change`, `always-resume`, `async-dns`, `auto-file-renaming`, `bt-enable-hook-after-hash-check`, `bt-enable-lpd`, `bt-exclude-tracker`, `bt-external-ip`, `bt-force-encryption`, `bt-hash-check-seed`, `bt-load-saved-metadata`, `bt-max-peers`, `bt-metadata-only`, `bt-min-crypto-level`, `bt-prioritize-piece`, `bt-remove-unselected-file`, `bt-request-peer-speed-limit`, `bt-require-crypto`, `bt-save-metadata`, `bt-seed-unverified`, `bt-stop-timeout`, `bt-tracker-connect-timeout`, `bt-tracker-interval`, `bt-tracker-timeout`, `bt-tracker`, `check-integrity`, `checksum`, `conditional-get`, `connect-timeout`, `content-disposition-default-utf8`, `continue`, `dht-file-path`, `dht-file-path6`, `dht-listen-port`, `dir`, `dry-run`, `enable-http-keep-alive`, `enable-http-pipelining`, `enable-mmap`, `enable-peer-exchange`, `file-allocation`, `follow-metalink`, `follow-torrent`, `force-save`, `force-sequential`, `ftp-passwd`, `ftp-pasv`, `ftp-proxy-passwd`, `ftp-proxy-user`, `ftp-proxy`, `ftp-reuse-connection`, `ftp-type`, `ftp-user`, `gid`, `hash-check-only`, `header`, `http-accept-gzip`, `http-auth-challenge`, `http-no-cache`, `http-passwd`, `http-proxy-passwd`, `http-proxy-user`, `http-proxy`, `http-user`, `https-proxy-passwd`, `https-proxy-user`, `https-proxy`, `index-out`, `listen-port`, `lowest-speed-limit`, `max-concurrent-downloads`, `max-connection-per-server`, `max-download-limit`, `max-file-not-found`, `max-mmap-limit`, `max-overall-download-limit`, `max-overall-upload-limit`, `max-resume-failure-tries`, `max-tries`, `max-upload-limit`, `metalink-base-uri`, `metalink-enable-unique-protocol`, `metalink-language`, `metalink-location`, `metalink-os`, `metalink-preferred-protocol`, `metalink-version`, `min-split-size`, `no-file-allocation-limit`, `no-netrc`, `no-proxy`, `no-want-digest-header`, `out`, `parameterized-uri`, `pause-metadata`, `pause`, `piece-length`, `proxy-method`, `realtime-chunk-checksum`, `referer`, `remote-time`, `remove-control-file`, `retry-wait`, `reuse-uri`, `rpc-listen-port`, `rpc-save-upload-metadata`, `rpc-secret`, `seed-ratio`, `seed-time`, `select-file`, `split`, `ssh-host-key-md`, `stream-piece-selector`, `timeout`, `uri-selector`, `use-head`, `user-agent`[cite: 1, 5].
+
+---
+> **Note**: Changes to `rpc-listen-port`, `rpc-secret`, `listen-port`, and `dht-listen-port` require an engine restart to take effect[cite: 5].
+
+---
+
+## 4. JSON-RPC Commands Reference
+
+Pincer aims for 1:1 API compatibility with aria2. The namespace in Pincer is `pin.*`. Authentication is handled by passing `"token:YOUR_SECRET"` as the first element of the `params` array[cite: 1, 3, 4].
+
+*   **Default Port**: `6842`[cite: 2, 3]
+*   **WebSocket URL**: `ws://127.0.0.1:6842/jsonrpc`[cite: 2, 3]
+All methods use the `pin.*` namespace.
+
+### Task Management
+
+| Method | Description | Parameters | Returns |
+| :--- | :--- | :--- | :--- |
+| `pin.addUri` | Adds a new download task from one or more URIs. | `[uris (Array of Strings), options (Object, Optional), position (Integer, Optional)]` | `gid` (String) |
+| `pin.addTorrent` | Adds a BitTorrent download by uploading a ".torrent" file. | `[torrent (Base64 String), uris (Array of Strings, Optional), options?, position?]` | `gid` (String) |
+| `pin.remove` | Removes the download denoted by `gid`. | `[gid (String)]` | `gid` (String) |
+| `pin.pause` | Pauses the active/waiting download denoted by `gid`. | `[gid (String)]` | `gid` (String) |
+| `pin.unpause` | Unpauses the paused download denoted by `gid`. | `[gid (String)]` | `gid` (String) |
+| `pin.pauseAll` | Pauses all active/waiting downloads. | `[]` | `OK` (String) |
+| `pin.unpauseAll` | Unpauses all paused downloads. | `[]` | `OK` (String) |
+
+### Status & Monitoring
+
+| Method | Description | Parameters | Returns |
+| :--- | :--- | :--- | :--- |
+| `pin.tellStatus` | Returns progress and status metadata. | `[gid (String), keys (Array of Strings, Optional)]` | `TaskStatus` (Object) |
+| `pin.tellActive` | Returns a list of all currently active downloads. | `[keys (Array of Strings, Optional)]` | Array of `TaskStatus` |
+| `pin.tellWaiting` | Returns a list of waiting/paused downloads. | `[offset (Int), num (Int), keys (Array, Optional)]` | Array of `TaskStatus` |
+| `pin.tellStopped` | Returns a list of stopped downloads. | `[offset (Int), num (Int), keys (Array, Optional)]` | Array of `TaskStatus` |
+| `pin.getGlobalStat` | Returns global statistics of the engine. | `[]` | `GlobalStat` (Object) |
+
+### Configuration & Options
+
+| Method | Description | Parameters | Returns |
+| :--- | :--- | :--- | :--- |
+| `pin.changeOption` | Changes options of the download dynamically. | `[gid (String), options (Object)]` | `OK` (String) |
+| `pin.getOption` | Returns options of the specific download. | `[gid (String)]` | `struct` (Object) |
+| `pin.changeGlobalOption` | Changes global options dynamically. | `[options (Object)]` | `OK` (String) |
+| `pin.getGlobalOption` | Returns current global options. | `[]` | `struct` (Object) |
+
+### History Management
+
+| Method | Description | Parameters | Returns |
+| :--- | :--- | :--- | :--- |
+| `pin.purgeDownloadResult` | Purges completed/error/removed downloads. | `[]` | `OK` (String) |
+| `pin.removeDownloadResult` | Removes a specific task from memory. | `[gid (String)]` | `OK` (String) |
+
+### Key Task Options
+When passing an `options` object to `pin.addUri` or `pin.changeOption`, the following keys are used:
+- `dir`: Target directory to store the file.
+- `out`: The file name of the downloaded file.
+- `split` or `-s`: (Integer) Number of connections to use (Default: 5).
+- `max-connection-per-server` or `-x`: (Integer) Max connections to a single server (Default: 1).
+- `min-split-size` or `-k`: (String) Minimum size to split a chunk (e.g., `1M`).
+- `max-download-limit`: (String) Speed limit for the download (e.g., `50K`, `0` for unlimited).
+- `header`: (Array of Strings) Custom HTTP Headers.
+- `user-agent`: (String) Custom User-Agent string.
+
+### Real-Time Events (WebSocket Notifications)
+
+The engine automatically pushes notifications to connected clients:
+
+| Event | Scenario |
+| :--- | :--- |
+| `pin.onDownloadStart` | Triggered when a task enters **active** state. |
+| `pin.onDownloadPause` | Triggered when a task is manually paused. |
+| `pin.onDownloadComplete` | Triggered when a task finishes successfully. |
+| `pin.onDownloadError` | Triggered when a task fails. |
+
+**Notification Example**:
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "pin.onDownloadComplete",
+  "params": [{"gid": "2089b05ecca3d829"}]
+}
+## 5. Aria2 vs Pincer Feature Comparison
+
+Below is a detailed tracking table comparing functions available in Aria2 vs what is covered in Pincer. Features not covered yet are kept here as **"To Be Added"**.
+
+### Pincer Exclusive Features (Not in Aria2)
+*   **Native Memory Safety**: Written entirely in Rust, preventing the segfaults and memory leaks possible in Aria2's C++ codebase[cite: 1].
+*   **Async I/O Worker Pool**: Uses a highly concurrent `tokio` Axel pattern for zero-allocation disk writes, offering lower CPU overhead on high-speed connections[cite: 1, 3].
+*   **First-Class WebSocket Layer**: Powered by `axum` instead of Aria2's legacy HTTP-polling/WebSocket implementation[cite: 1, 3].
+
+### Task Addition & Management
+
+| Function                  | Pincer Equivalent     | Status                  |
+|---------------------------|-----------------------|-------------------------|
+| `aria2.addUri`            | `pin.addUri`          | ✅ Fully Covered        |
+| `aria2.addTorrent`        | `pin.addTorrent`      | ⚠️ Stubbed              |
+| `aria2.addMetalink`       | -                     | ❌ To Be Added          |
+| `aria2.remove`            | `pin.remove`          | ✅ Fully Covered        |
+| `aria2.forceRemove`       | -                     | ❌ To Be Added          |
+| `aria2.pause`             | `pin.pause`           | ✅ Fully Covered        |
+| `aria2.pauseAll`          | `pin.pauseAll`        | ✅ Fully Covered        |
+| `aria2.forcePause`        | -                     | ❌ To Be Added          |
+| `aria2.forcePauseAll`     | -                     | ❌ To Be Added          |
+| `aria2.unpause`           | `pin.unpause`         | ✅ Fully Covered        |
+| `aria2.unpauseAll`        | `pin.unpauseAll`      | ✅ Fully Covered        |
+| `aria2.changePosition`    | -                     | ❌ To Be Added          |
+| `aria2.changeUri`         | -                     | ❌ To Be Added          |
+
+### Status & Monitoring
+
+| Function             | Pincer Equivalent    | Status           |
+|----------------------|----------------------|------------------|
+| `aria2.tellStatus`   | `pin.tellStatus`     | ✅ Fully Covered |
+| `aria2.tellActive`   | `pin.tellActive`     | ✅ Fully Covered |
+| `aria2.tellWaiting`  | `pin.tellWaiting`    | ✅ Fully Covered |
+| `aria2.tellStopped`  | `pin.tellStopped`    | ✅ Fully Covered |
+| `aria2.getGlobalStat`| `pin.getGlobalStat`  | ✅ Fully Covered |
+| `aria2.getUris`      | -                    | ❌ To Be Added   |
+| `aria2.getFiles`     | -                    | ❌ To Be Added   |
+| `aria2.getPeers`     | -                    | ❌ To Be Added   |
+| `aria2.getServers`   | -                    | ❌ To Be Added   |
+
+### Configuration, History & System
+
+| Function                      | Pincer Equivalent           | Status           |
+|-------------------------------|-----------------------------|------------------|
+| `aria2.changeOption`          | `pin.changeOption`          | ✅ Fully Covered |
+| `aria2.getOption`             | `pin.getOption`             | ✅ Fully Covered |
+| `aria2.changeGlobalOption`    | `pin.changeGlobalOption`    | ✅ Fully Covered |
+| `aria2.getGlobalOption`       | `pin.getGlobalOption`       | ✅ Fully Covered |
+| `aria2.purgeDownloadResult`   | `pin.purgeDownloadResult`   | ✅ Fully Covered |
+| `aria2.removeDownloadResult`  | `pin.removeDownloadResult`  | ✅ Fully Covered |
+| `aria2.getVersion`            | -                           | ❌ To Be Added   |
+| `aria2.getSessionInfo`        | -                           | ❌ To Be Added   |
+| `aria2.shutdown`              | -                           | ❌ To Be Added   |
+| `aria2.forceShutdown`         | -                           | ❌ To Be Added   |
+| `aria2.saveSession`           | -                           | ❌ To Be Added   |
+| `system.multicall`            | -                           | ❌ To Be Added   |
+| `system.listMethods`          | -                           | ❌ To Be Added   |
+| `system.listNotifications`    | -                           | ❌ To Be Added   |
+
+### Events
+
+| Event                        | Pincer Equivalent         | Status           |
+|------------------------------|---------------------------|------------------|
+| `aria2.onDownloadStart`      | `pin.onDownloadStart`     | ✅ Fully Covered |
+| `aria2.onDownloadPause`      | `pin.onDownloadPause`     | ✅ Fully Covered |
+| `aria2.onDownloadComplete`   | `pin.onDownloadComplete`  | ✅ Fully Covered |
+| `aria2.onDownloadError`      | `pin.onDownloadError`     | ✅ Fully Covered |
+| `aria2.onDownloadStop`       | -                         | ❌ To Be Added   |
+| `aria2.onBtDownloadComplete` | -                         | ❌ To Be Added   |
+
+---
+
+## 6. Summary
+
+Pincer successfully implements the core HTTP/FTP download pipeline, including pausing, status tracking, global configuration, and event notifications. 
+
+**What is missing:**
+1. **BitTorrent and Metalink Support**: Methods like `getPeers`, `addMetalink`, `addTorrent` (currently a stub).
+2. **System & Session Controls**: Saving sessions, elegant shutdown via RPC, and system multicall features.
+3. **Advanced URI/Position Management**: Dynamically changing queue positions (`changePosition`) or swapping mirrors mid-download (`changeUri`). 
+4. **Force Actions**: `forceRemove`, `forcePause` are not strictly necessary yet as basic remove/pause work cleanly due to Rust's concurrency model, but they are technically missing for 100% strict compliance.

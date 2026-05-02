@@ -7,12 +7,21 @@ mod task;
 use manager::DownloadManager;
 use std::env;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const BUILD_TYPE: &str = "dev";
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
     
+    // Check for version flag
+    if args.iter().any(|arg| arg == "--version" || arg == "-v") {
+        println!("pincer {} ({})", VERSION, BUILD_TYPE);
+        return;
+    }
+
     // Command line mode for quick direct download tests
-    if args.len() > 1 {
+    if args.len() > 1 && !args[1].starts_with('-') {
         let url = args[1].clone();
         println!("CLI Mode: Downloading {}...", url);
         
@@ -47,7 +56,7 @@ async fn main() {
     }
 
     // Default Server mode
-    println!("Starting Pincer engine...");
+    println!("Starting Pincer engine v{} ({})", VERSION, BUILD_TYPE);
     let (manager, rx) = DownloadManager::new();
     
     // Start WebSocket server to listen for RPC

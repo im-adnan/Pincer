@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 use regex::Regex;
 use serde_json::Value;
 
-use crate::models::{TaskStatus, GlobalStat, NotificationParam, RPCNotification, FileData, FileUri, ResolveResponse};
+use crate::models::{TaskStatus, GlobalStat, NotificationParam, RPCNotification, FileData, FileUri};
 
 struct TaskControl {
     status: TaskStatus,

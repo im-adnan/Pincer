@@ -15,28 +15,55 @@ This document consolidates all information regarding **Pincer** — a high-perfo
 ### Thread Control in Pincer
 In **Pincer**, download threads are dynamically controlled **via the JSON-RPC interface** when adding or modifying a task using options like `split` (which defines the number of connections/threads per download) and `min-split-size`[cite: 1].
 
-### CLI Mode
-For quick testing without the RPC server:
+### CLI Mode (Direct Download)
+Pincer now features a professional CLI powered by `lexopt`, allowing it to be used as a standalone tool similar to `aria2c`.
+
+#### Basic Usage
 ```bash
 ./pincer "https://example.com/file.zip"
 ```
-This downloads the file to the current directory using **4 threads** by default.
 
-**Current Limitations**:
-Pincer does not support command-line flags like `-v` (version), `-a`, `-f`, `-j`, etc. It is designed first and foremost as a background engine[cite: 1].
+#### Advanced Arguments
+| Flag | Long Form | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `-s` | `--split` | Number of concurrent threads/connections (1-99). | `4` |
+| `-d` | `--dir` | Target directory for the download. | Current Dir |
+| `-o` | `--out` | Custom output filename. | From URL |
+| `-l` | `--log` | Enable detailed logging. | `false` |
+| `-h` | `--help` | Print help information. | N/A |
 
-**Comparison with Aria2**:
-    *   `-v` maps to `--version`.
-    *   `-V` maps to `--check-integrity`.
-    *   `-j` maps to `--max-concurrent-downloads`.
-    *   `-s` maps to `--split` (thread count).
-*   **In Pincer**:
-    *   The CLI mode is strictly a minimal stub for testing. If you run `./pincer <URL>`, it automatically hardcodes the download to use **4 threads** (`threads: 4` in `src/main.rs`) and downloads the file to the current directory[cite: 1, 3].
-    *   **To Be Added (Future Functionality)**: A full CLI argument parser (e.g., using `clap`) to support flags like `-v` (version), `-s` (threads), `-d` (directory), and `-c` (continue) for users who want to use Pincer exclusively from the terminal without the RPC server[cite: 1, 5].
+## Roadmap
+The CLI parser (using `lexopt`) will be expanded to support additional flags for users who want to use Pincer exclusively from the terminal without the RPC server:
+*   `-v` or `--version`
+*   `-V` or `--check-integrity`
+*   `-j` or `--max-concurrent-downloads`
+*   `-c` or `--continue` (Resumption)
+
+
+**Example (High-Speed 16-Thread Download):**
+```bash
+./pincer "https://example.com/movie.mp4" -s 16 -d ~/Downloads -o holiday_video.mp4
+```
+
+### Technical Architecture & Threads
+*   **Rust-Native Performance**: Built on `tokio` for non-blocking I/O and zero-allocation disk writes.
+*   **Dynamic Thread Scaling**: Supports up to **99 threads** per task. The engine automatically splits the file into equal byte-ranges and assigns a dedicated worker to each.
+*   **Range Support Detection**: If a server does not support `Accept-Ranges`, Pincer gracefully falls back to a single thread to ensure data integrity.
 
 ---
 
-## 2. Connection & Authentication
+## 2. Session Persistence & Resumption
+
+Pincer now includes a built-in persistence layer. All tasks, global options, and progress are saved to a session file.
+
+- **Session File**: `pincer.session` (JSON format).
+- **Auto-Save**: Triggered on every significant state change (adding a task, pausing, or changing options).
+- **Auto-Load**: On startup, Pincer detects the session file and restores all tasks.
+- **Resumption**: Interrupted downloads will automatically resume from the last successfully written byte using HTTP Range requests.
+
+---
+
+## 3. Connection & Authentication
 
 - **Default Port**: `6842`
 - **WebSocket URL**: `ws://127.0.0.1:6842/jsonrpc`
@@ -155,10 +182,13 @@ All methods use the `pin.*` namespace.
 | `pin.addUri` | Adds a new download task from one or more URIs. | `[uris (Array of Strings), options (Object, Optional), position (Integer, Optional)]` | `gid` (String) |
 | `pin.addTorrent` | Adds a BitTorrent download by uploading a ".torrent" file. | `[torrent (Base64 String), uris (Array of Strings, Optional), options?, position?]` | `gid` (String) |
 | `pin.remove` | Removes the download denoted by `gid`. | `[gid (String)]` | `gid` (String) |
+| `pin.removeAndFile` | Removes the download and moves its file to Trash. | `[gid (String)]` | `true` (Boolean) |
+| `pin.forceRemove` | Immediately removes the download denoted by `gid`. | `[gid (String)]` | `gid` (String) |
 | `pin.pause` | Pauses the active/waiting download denoted by `gid`. | `[gid (String)]` | `gid` (String) |
 | `pin.unpause` | Unpauses the paused download denoted by `gid`. | `[gid (String)]` | `gid` (String) |
 | `pin.pauseAll` | Pauses all active/waiting downloads. | `[]` | `OK` (String) |
 | `pin.unpauseAll` | Unpauses all paused downloads. | `[]` | `OK` (String) |
+| `pin.resolveUrl` | Resolves a URL to its final direct download link. | `[url (String)]` | `ResolveResponse` (Object) |
 
 ### Status & Monitoring
 
@@ -178,6 +208,24 @@ All methods use the `pin.*` namespace.
 | `pin.getOption` | Returns options of the specific download. | `[gid (String)]` | `struct` (Object) |
 | `pin.changeGlobalOption` | Changes global options dynamically. | `[options (Object)]` | `OK` (String) |
 | `pin.getGlobalOption` | Returns current global options. | `[]` | `struct` (Object) |
+
+### Advanced Features
+
+#### URL Resolution (`pin.resolveUrl`)
+Pincer features a powerful URL resolution engine that handles more than just simple redirects.
+- **Universal Redirects**: Follows HTTP redirects to find the final CDN link.
+- **Metadata Extraction**: Extracts filenames from `Content-Disposition` headers.
+- **Platform Scraping**: Automatically identifies and extracts high-quality video links from platforms like **Pexels** by parsing `NEXT_DATA` or meta tags.
+- **Resumability Check**: Verifies if the server supports range requests before starting.
+
+#### Global Speed Modes
+The `speed-mode` option in `pin.changeGlobalOption` allows for high-level bandwidth control:
+- `max_bandwidth` (or `max`): No limit applied.
+- `half_bandwidth` (or `half`): Limits speed to 50% of the maximum speed seen during the current session.
+- `min_bandwidth` (or `min`): Limits speed to a sub-kb/s level (approx. 768 bytes/s) without pausing, keeping connections alive.
+
+#### Trash Integration
+The `pin.removeAndFile` method utilizes the system trash (e.g., macOS Trash) rather than performing a permanent deletion. This provides a safety net for users who may want to recover a deleted download.
 
 ### History Management
 
@@ -232,7 +280,7 @@ Below is a detailed tracking table comparing functions available in Aria2 vs wha
 | `aria2.addTorrent`        | `pin.addTorrent`      | ⚠️ Stubbed              |
 | `aria2.addMetalink`       | -                     | ❌ To Be Added          |
 | `aria2.remove`            | `pin.remove`          | ✅ Fully Covered        |
-| `aria2.forceRemove`       | -                     | ❌ To Be Added          |
+| `aria2.forceRemove`       | `pin.forceRemove`     | ✅ Fully Covered        |
 | `aria2.pause`             | `pin.pause`           | ✅ Fully Covered        |
 | `aria2.pauseAll`          | `pin.pauseAll`        | ✅ Fully Covered        |
 | `aria2.forcePause`        | -                     | ❌ To Be Added          |
@@ -266,11 +314,11 @@ Below is a detailed tracking table comparing functions available in Aria2 vs wha
 | `aria2.getGlobalOption`       | `pin.getGlobalOption`       | ✅ Fully Covered |
 | `aria2.purgeDownloadResult`   | `pin.purgeDownloadResult`   | ✅ Fully Covered |
 | `aria2.removeDownloadResult`  | `pin.removeDownloadResult`  | ✅ Fully Covered |
-| `aria2.getVersion`            | -                           | ❌ To Be Added   |
+| `aria2.getVersion`            | `pin.getVersion`            | ✅ Fully Covered |
 | `aria2.getSessionInfo`        | -                           | ❌ To Be Added   |
-| `aria2.shutdown`              | -                           | ❌ To Be Added   |
+| `aria2.shutdown`              | `pin.shutdown`              | ✅ Fully Covered |
 | `aria2.forceShutdown`         | -                           | ❌ To Be Added   |
-| `aria2.saveSession`           | -                           | ❌ To Be Added   |
+| `aria2.saveSession`           | `pin.saveSession`           | ✅ Fully Covered |
 | `system.multicall`            | -                           | ❌ To Be Added   |
 | `system.listMethods`          | -                           | ❌ To Be Added   |
 | `system.listNotifications`    | -                           | ❌ To Be Added   |
@@ -288,12 +336,30 @@ Below is a detailed tracking table comparing functions available in Aria2 vs wha
 
 ---
 
-## 6. Summary
+---
 
-Pincer successfully implements the core HTTP/FTP download pipeline, including pausing, status tracking, global configuration, and event notifications. 
+## 7. Verification & Worker Logging
 
-**What is missing:**
-1. **BitTorrent and Metalink Support**: Methods like `getPeers`, `addMetalink`, `addTorrent` (currently a stub).
-2. **System & Session Controls**: Saving sessions, elegant shutdown via RPC, and system multicall features.
-3. **Advanced URI/Position Management**: Dynamically changing queue positions (`changePosition`) or swapping mirrors mid-download (`changeUri`). 
-4. **Force Actions**: `forceRemove`, `forcePause` are not strictly necessary yet as basic remove/pause work cleanly due to Rust's concurrency model, but they are technically missing for 100% strict compliance.
+To verify that Pincer is correctly utilizing multi-threading, you can observe the internal worker logs during a CLI download.
+
+**Example Log Output (`-s 16`):**
+```text
+🚀 Pincer CLI Mode
+URL: https://images.pexels.com/.../photo.jpeg
+Threads: 16
+-------------------------------------------
+[INFO] [Worker 0] Assigned range: 0 - 47938 (47939 bytes)
+[INFO] [Worker 1] Assigned range: 47939 - 95877 (47939 bytes)
+...
+[INFO] [Worker 0] Connection established. Segment range: 0 - 47938
+[INFO] [Worker 2] Connection established. Segment range: 95878 - 143816
+...
+[========================================] 100.00%
+✅ Download complete!
+```
+
+### Why use these features?
+1.  **99 Threads**: Maximizes bandwidth utilization on high-latency connections or from servers that throttle single-connection speeds.
+2.  **Session Persistence**: Critical for long-running downloads; protects progress against system crashes or engine restarts.
+3.  **Advanced CLI**: Allows developers and power users to use Pincer as a drop-in, high-performance replacement for `aria2c` or `wget`.
+4.  **Worker Logs**: Provides transparency and allows users to debug connection issues or verify server range support in real-time.

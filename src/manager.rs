@@ -508,109 +508,139 @@ impl DownloadManager {
         serde_json::to_string(&notification).unwrap_or_default()
     }
 
-    pub async fn resolve_url(&self, url: String) -> Result<ResolveResponse, String> {
+    pub async fn resolve_url(&self, url: String) -> Result<crate::models::ResolveResponse, String> {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .build()
             .map_err(|e| e.to_string())?;
 
-        // 1. Standard Redirect Resolution
+        // 1. Standard Redirect Resolution (Current Logic)
         let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
         let final_url = response.url().to_string();
         
-        let headers = response.headers();
-        let content_type = headers.get(reqwest::header::CONTENT_TYPE).and_then(|h| h.to_str().ok()).unwrap_or("");
-        let content_length = headers.get(reqwest::header::CONTENT_LENGTH).and_then(|h| h.to_str().ok()).and_then(|s| s.parse::<u64>().ok());
-        let accept_ranges = headers.get(reqwest::header::ACCEPT_RANGES).and_then(|h| h.to_str().ok()).unwrap_or("");
-        let content_range = headers.get(reqwest::header::CONTENT_RANGE).and_then(|h| h.to_str().ok()).unwrap_or("");
-        
-        let is_resumable = accept_ranges.contains("bytes") || !content_range.is_empty();
-        
-        let file_type = if content_type.contains("video/") {
-            Some("Video File".to_string())
-        } else if content_type.contains("audio/") {
-            Some("Audio File".to_string())
-        } else if content_type.contains("image/") {
-            Some("Image".to_string())
-        } else if content_type.contains("application/pdf") {
-            Some("PDF Document".to_string())
-        } else if content_type.contains("zip") || content_type.contains("archive") {
-            Some("Archive".to_string())
-        } else {
-            None
-        };
-
-        // Filename from Content-Disposition
-        let mut filename = headers.get(reqwest::header::CONTENT_DISPOSITION)
+        let content_type = response.headers()
+            .get(reqwest::header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
-            .and_then(|s| {
-                if let Some(idx) = s.find("filename=") {
-                    let part = &s[idx + 9..];
-                    let name = part.trim_matches('"');
-                    Some(name.to_string())
-                } else if let Some(idx) = s.find("filename*=") {
-                    let part = &s[idx + 11..];
-                    let val = part.split("''").last()?;
-                    percent_encoding::percent_decode_str(val).decode_utf8().ok().map(|s: std::borrow::Cow<str>| s.to_string())
-                } else {
-                    None
-                }
-            });
+            .unwrap_or("").to_string();
 
-        // 2. UNIVERSAL FALLBACK: Scrape HTML for metadata if it's an HTML page
-        if content_type.contains("text/html") && (filename.is_none() || !content_type.contains("video/")) {
+        // If the result is already a direct video file, return it
+        if content_type.contains("video/") || 
+           final_url.split('?').next().unwrap_or("").ends_with(".mp4") || 
+           final_url.split('?').next().unwrap_or("").ends_with(".mkv") {
+            
+            let total_size = response.headers()
+                .get(reqwest::header::CONTENT_LENGTH)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| s.parse::<i64>().ok());
+            
+            let is_resumable = response.headers()
+                .get(reqwest::header::ACCEPT_RANGES)
+                .and_then(|h| h.to_str().ok())
+                .map(|s| s == "bytes");
+            let filename = response.headers()
+                .get(reqwest::header::CONTENT_DISPOSITION)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|s| {
+                    if let Some(idx) = s.find("filename=") {
+                        let part = &s[idx + 9..];
+                        let name = part.trim_matches('"');
+                        Some(name.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or_else(|| {
+                    final_url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string()
+                });
+
+
+            return Ok(crate::models::ResolveResponse {
+                url: final_url,
+                filename: Some(filename),
+                total_size,
+                file_type: Some(content_type.to_string()),
+                is_resumable,
+            });
+        }
+
+        // 2. UNIVERSAL FALLBACK: Scrape HTML for metadata
+        if content_type.contains("text/html") {
             let html = response.text().await.map_err(|e| e.to_string())?;
 
-            // A. Universal Meta Tags
+            // A. Universal Meta Tags (OpenGraph / Twitter)
             let og_video_re = Regex::new(r#"<meta property="(?:og:video|twitter:player)" content="(.*?)"#).unwrap();
             let og_title_re = Regex::new(r#"<meta property="(?:og:title|twitter:title)" content="(.*?)"#).unwrap();
 
             if let Some(caps) = og_video_re.captures(&html) {
                 let video_url = caps[1].to_string();
                 let title = og_title_re.captures(&html).map(|c| c[1].to_string()).unwrap_or_else(|| "download".to_string());
-                return Ok(ResolveResponse {
+                return Ok(crate::models::ResolveResponse {
                     url: video_url,
                     filename: Some(format!("{}.mp4", title.replace(" ", "-"))),
                     total_size: None,
-                    file_type: Some("Video File".to_string()),
-                    is_resumable: Some(true),
+                    file_type: Some("video/mp4".to_string()),
+                    is_resumable: None,
                 });
             }
 
-            // B. Universal JSON Script Extraction
+            // B. Universal JSON Script Extraction (Next.js, Nuxt, etc.)
             let json_re = Regex::new(r#"<script[^>]*type="application/json"[^>]*>(.*?)</script>|<script id="__NEXT_DATA__"[^>]*>(.*?)</script>"#).unwrap();
             let video_link_re = Regex::new(r#"https?://[^\s"\'<>]+?\.(?:mp4|mkv|webm|mov)(?:[^\s"\'<>]*?)"#).unwrap();
             
+            let mut best_json_link: Option<(String, String)> = None;
             for caps in json_re.captures_iter(&html) {
                 let json_content = caps.get(1).or(caps.get(2)).map(|m| m.as_str()).unwrap_or("");
                 if let Ok(data) = serde_json::from_str::<Value>(json_content) {
+                    // Heuristic: Search for video links within the JSON structure
                     let json_str = data.to_string();
-                    if let Some(mat) = video_link_re.find(&json_str) {
-                        let link = mat.as_str().to_string();
-                        let title = og_title_re.captures(&html).map(|c| c[1].to_string()).unwrap_or_else(|| "download".to_string());
-                        let ext = link.split('?').next().unwrap_or("").split('.').last().unwrap_or("mp4").to_string();
-                        return Ok(ResolveResponse {
-                            url: link,
-                            filename: Some(format!("{}.{}", title.replace(" ", "-"), ext)),
-                            total_size: None,
-                            file_type: Some("Video File".to_string()),
-                            is_resumable: Some(true),
-                        });
+                    let mut found_links: Vec<String> = video_link_re.find_iter(&json_str).map(|m| m.as_str().to_string()).collect();
+                    if !found_links.is_empty() {
+                        // Prioritize links that look like they belong to CDNs or are higher quality
+                        found_links.sort_by_key(|a| a.len());
+                        if let Some(link) = found_links.last() {
+                            best_json_link = Some((link.clone(), "download".to_string()));
+                            break; 
+                        }
                     }
                 }
             }
+            if let Some((link, _)) = best_json_link {
+                // Try to find a title in the HTML as well
+                let title = og_title_re.captures(&html).map(|c| c[1].to_string()).unwrap_or_else(|| "download".to_string());
+                let ext = link.split('?').next().unwrap_or("").split('.').last().unwrap_or("mp4").to_string();
+                return Ok(crate::models::ResolveResponse {
+                    url: link,
+                    filename: Some(format!("{}.{}", title.replace(" ", "-"), ext)),
+                    total_size: None,
+                    file_type: Some(format!("video/{}", ext)),
+                    is_resumable: None,
+                });
+            }
+
+            // C. Heuristic Regex Search in Full HTML
+            let mut links: Vec<String> = video_link_re.find_iter(&html).map(|m| m.as_str().to_string()).collect();
+            if !links.is_empty() {
+                links.sort_by_key(|a| a.len());
+                let best_link = links.last().unwrap();
+                let name = best_link.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin");
+                return Ok(crate::models::ResolveResponse {
+                    url: best_link.to_string(),
+                    filename: Some(name.to_string()),
+                    total_size: None,
+                    file_type: None,
+                    is_resumable: None,
+                });
+            }
         }
 
-        if filename.is_none() {
-            filename = Some(final_url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string());
-        }
-
-        Ok(ResolveResponse {
+        // Final fallback: use the final redirect URL
+        let filename = final_url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string();
+        Ok(crate::models::ResolveResponse {
             url: final_url,
-            filename,
-            total_size: content_length,
-            file_type,
-            is_resumable: Some(is_resumable),
+            filename: Some(filename),
+            total_size: None, // We could try to get it from headers if we haven't already
+            file_type: if content_type.is_empty() { None } else { Some(content_type.to_string()) },
+            is_resumable: None,
         })
     }
 }

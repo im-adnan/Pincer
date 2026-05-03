@@ -2,13 +2,12 @@ name: Auto Release
 
 on:
   push:
-    branches:
-      - main
-      - master
+    tags:
+      - 'v*'
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
@@ -17,40 +16,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Pincer
+        run: cargo build --release
+
       - name: Get Version
         id: get_version
         run: |
           VERSION=$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Check Major Version Change
-        id: major_check
-        run: |
-          # Get current major version
-          CURRENT_MAJOR=$(echo "${{ env.VERSION }}" | cut -d. -f1)
-          
-          # Get latest tag major version
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          LATEST_MAJOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f1)
-          
-          echo "Current Major: $CURRENT_MAJOR, Latest Major: $LATEST_MAJOR"
-          
-          if [ "$CURRENT_MAJOR" -gt "$LATEST_MAJOR" ]; then
-            echo "is_major=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_major=false" >> $GITHUB_OUTPUT
-          fi
 
       - name: Create Release
-        if: steps.major_check.outputs.is_major == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ env.VERSION }}
           name: Release v${{ env.VERSION }}
+          files: target/release/pincer
           body: |
-            ## Changes in this Release
-            Automated release for version ${{ env.VERSION }}
+            ## Pincer Engine Release v${{ env.VERSION }}
+            Automated build for macOS.
           draft: false
           prerelease: false
         env:

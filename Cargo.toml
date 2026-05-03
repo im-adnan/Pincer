@@ -1,6 +1,6 @@
 [package]
 name = "pincer"
-version = "1.0.0-dev"
+version = "1.1.0-dev"
 edition = "2021"
 
 [dependencies]
@@ -17,3 +17,4 @@ tokio-util = "0.7.18"
 trash = "5.2.2"
 regex = "1.10"
 percent-encoding = "2.3"
+lexopt = "0.3"

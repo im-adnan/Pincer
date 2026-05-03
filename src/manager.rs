@@ -39,6 +39,10 @@ impl DownloadManager {
         (manager, rx)
     }
 
+    pub fn get_version(&self) -> String {
+        env!("CARGO_PKG_VERSION").to_string()
+    }
+
     pub async fn generate_unique_filename(&self, filename: &str, excluding_gid: Option<&str>) -> String {
         let tasks = self.tasks.read().await;
         let mut unique_name = filename.to_string();

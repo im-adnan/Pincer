@@ -399,6 +399,12 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                 None
             }
         },
+        "pin.getVersion" => {
+            let version = manager.get_version();
+            Some(json!({
+                "version": version
+            }))
+        },
         _ => None,
     };
 

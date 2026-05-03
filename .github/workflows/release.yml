@@ -24,17 +24,26 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Check if tag exists
-        id: tag_check
+      - name: Check Major Version Change
+        id: major_check
         run: |
-          if git ls-remote --tags origin "refs/tags/v${{ env.VERSION }}" | grep -q "refs/tags/v${{ env.VERSION }}"; then
-            echo "exists=true" >> $GITHUB_OUTPUT
+          # Get current major version
+          CURRENT_MAJOR=$(echo "${{ env.VERSION }}" | cut -d. -f1)
+          
+          # Get latest tag major version
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST_MAJOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f1)
+          
+          echo "Current Major: $CURRENT_MAJOR, Latest Major: $LATEST_MAJOR"
+          
+          if [ "$CURRENT_MAJOR" -gt "$LATEST_MAJOR" ]; then
+            echo "is_major=true" >> $GITHUB_OUTPUT
           else
-            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "is_major=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Create Release
-        if: steps.tag_check.outputs.exists == 'false'
+        if: steps.major_check.outputs.is_major == 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ env.VERSION }}

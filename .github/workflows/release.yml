@@ -22,6 +22,11 @@ jobs:
       - name: Build Pincer
         run: cargo build --release
 
+      - name: Package Binary
+        run: |
+          cd target/release
+          zip pincer-macos.zip pincer
+
       - name: Get Version
         id: get_version
         run: |
@@ -33,10 +38,12 @@ jobs:
         with:
           tag_name: v${{ env.VERSION }}
           name: Release v${{ env.VERSION }}
-          files: target/release/pincer
+          files: target/release/pincer-macos.zip
           body: |
             ## Pincer Engine Release v${{ env.VERSION }}
             Automated build for macOS.
+            
+            **Note**: Download the `.zip` file and extract it to get the `pincer` executable.
           draft: false
           prerelease: false
         env:

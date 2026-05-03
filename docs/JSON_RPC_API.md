@@ -1,6 +1,6 @@
 # Pincer Comprehensive Manual & API Reference
 
-This document consolidates all information regarding **Pincer** — a high-performance download engine written in Rust — including its configuration, JSON-RPC interface, Motrix compatibility, and feature comparison with aria2. It serves as the single source of truth for the project.
+This document consolidates all information regarding **Pincer** — a high-performance download engine written entirely in Rust from the ground up — including its configuration, JSON-RPC interface, and feature set. It serves as the single source of truth for the project.
 
 ---
 
@@ -16,7 +16,7 @@ This document consolidates all information regarding **Pincer** — a high-perfo
 In **Pincer**, download threads are dynamically controlled **via the JSON-RPC interface** when adding or modifying a task using options like `split` (which defines the number of connections/threads per download) and `min-split-size`[cite: 1].
 
 ### CLI Mode (Direct Download)
-Pincer now features a professional CLI powered by `lexopt`, allowing it to be used as a standalone tool similar to `aria2c`.
+Pincer now features a professional CLI powered by `lexopt`, allowing it to be used as a standalone tool.
 
 #### Basic Usage
 ```bash
@@ -88,11 +88,11 @@ If an RPC secret is configured, pass it as the **first element** of the `params`
 
 ---
 
-## 3. Motrix Configuration & Default Settings
+## 4. Configuration & Default Settings
 
-Pincer is being developed to support the configuration keys passed by tools like Motrix.
+Pincer uses a flexible configuration system for its engine to be used in Grabbit.
 
-### Default Engine Configuration (`aria2.conf` style)[cite: 1, 5]
+### Default Engine Configuration (`pincer.conf` style)[cite: 1, 5]
 
 **RPC**:
 - `enable-rpc=true`
@@ -169,7 +169,7 @@ These keys map directly to global or task option updates (`pin.changeGlobalOptio
 
 ## 4. JSON-RPC Commands Reference
 
-Pincer aims for 1:1 API compatibility with aria2. The namespace in Pincer is `pin.*`. Authentication is handled by passing `"token:YOUR_SECRET"` as the first element of the `params` array[cite: 1, 3, 4].
+The namespace in Pincer is `pin.*`. Authentication is handled by passing `"token:YOUR_SECRET"` as the first element of the `params` array[cite: 1, 3, 4].
 
 *   **Default Port**: `6842`[cite: 2, 3]
 *   **WebSocket URL**: `ws://127.0.0.1:6842/jsonrpc`[cite: 2, 3]
@@ -263,62 +263,62 @@ The engine automatically pushes notifications to connected clients:
   "method": "pin.onDownloadComplete",
   "params": [{"gid": "2089b05ecca3d829"}]
 }
-## 5. Aria2 vs Pincer Feature Comparison
+## 5. API Methodology Comparison
 
-Below is a detailed tracking table comparing functions available in Aria2 vs what is covered in Pincer. Features not covered yet are kept here as **"To Be Added"**.
+Below is a tracking table showing how Pincer's original API methods map to standard download management patterns.
 
-### Pincer Exclusive Features (Not in Aria2)
-*   **Native Memory Safety**: Written entirely in Rust, preventing the segfaults and memory leaks possible in Aria2's C++ codebase[cite: 1].
-*   **Async I/O Worker Pool**: Uses a highly concurrent `tokio` Axel pattern for zero-allocation disk writes, offering lower CPU overhead on high-speed connections[cite: 1, 3].
-*   **First-Class WebSocket Layer**: Powered by `axum` instead of Aria2's legacy HTTP-polling/WebSocket implementation[cite: 1, 3].
+### Pincer Exclusive Features
+*   **Native Memory Safety**: Written entirely in Rust, preventing the segfaults and memory leaks possible in other C-based engines[cite: 1].
+*   **Async I/O Worker Pool**: Uses a highly concurrent `tokio` pattern for zero-allocation disk writes, offering lower CPU overhead on high-speed connections[cite: 1, 3].
+*   **First-Class WebSocket Layer**: Powered by `axum` for modern, efficient communication[cite: 1, 3].
 
 ### Task Addition & Management
 
-| Function                  | Pincer Equivalent     | Status                  |
+| Standard Method Name      | Pincer Method Name    | Status                  |
 |---------------------------|-----------------------|-------------------------|
-| `aria2.addUri`            | `pin.addUri`          | ✅ Fully Covered        |
-| `aria2.addTorrent`        | `pin.addTorrent`      | ⚠️ Stubbed              |
-| `aria2.addMetalink`       | -                     | ❌ To Be Added          |
-| `aria2.remove`            | `pin.remove`          | ✅ Fully Covered        |
-| `aria2.forceRemove`       | `pin.forceRemove`     | ✅ Fully Covered        |
-| `aria2.pause`             | `pin.pause`           | ✅ Fully Covered        |
-| `aria2.pauseAll`          | `pin.pauseAll`        | ✅ Fully Covered        |
-| `aria2.forcePause`        | -                     | ❌ To Be Added          |
-| `aria2.forcePauseAll`     | -                     | ❌ To Be Added          |
-| `aria2.unpause`           | `pin.unpause`         | ✅ Fully Covered        |
-| `aria2.unpauseAll`        | `pin.unpauseAll`      | ✅ Fully Covered        |
-| `aria2.changePosition`    | -                     | ❌ To Be Added          |
-| `aria2.changeUri`         | -                     | ❌ To Be Added          |
+| `addUri`                  | `pin.addUri`          | ✅ Fully Covered        |
+| `addTorrent`              | `pin.addTorrent`      | ⚠️ Stubbed              |
+| `addMetalink`       | -                     | ❌ To Be Added          |
+| `remove`            | `pin.remove`          | ✅ Fully Covered        |
+| `forceRemove`       | `pin.forceRemove`     | ✅ Fully Covered        |
+| `pause`             | `pin.pause`           | ✅ Fully Covered        |
+| `pauseAll`          | `pin.pauseAll`        | ✅ Fully Covered        |
+| `forcePause`        | -                     | ❌ To Be Added          |
+| `forcePauseAll`     | -                     | ❌ To Be Added          |
+| `unpause`           | `pin.unpause`         | ✅ Fully Covered        |
+| `unpauseAll`        | `pin.unpauseAll`      | ✅ Fully Covered        |
+| `changePosition`    | -                     | ❌ To Be Added          |
+| `changeUri`         | -                     | ❌ To Be Added          |
 
 ### Status & Monitoring
 
 | Function             | Pincer Equivalent    | Status           |
 |----------------------|----------------------|------------------|
-| `aria2.tellStatus`   | `pin.tellStatus`     | ✅ Fully Covered |
-| `aria2.tellActive`   | `pin.tellActive`     | ✅ Fully Covered |
-| `aria2.tellWaiting`  | `pin.tellWaiting`    | ✅ Fully Covered |
-| `aria2.tellStopped`  | `pin.tellStopped`    | ✅ Fully Covered |
-| `aria2.getGlobalStat`| `pin.getGlobalStat`  | ✅ Fully Covered |
-| `aria2.getUris`      | -                    | ❌ To Be Added   |
-| `aria2.getFiles`     | -                    | ❌ To Be Added   |
-| `aria2.getPeers`     | -                    | ❌ To Be Added   |
-| `aria2.getServers`   | -                    | ❌ To Be Added   |
+| `tellStatus`   | `pin.tellStatus`     | ✅ Fully Covered |
+| `tellActive`   | `pin.tellActive`     | ✅ Fully Covered |
+| `tellWaiting`  | `pin.tellWaiting`    | ✅ Fully Covered |
+| `tellStopped`  | `pin.tellStopped`    | ✅ Fully Covered |
+| `getGlobalStat`| `pin.getGlobalStat`  | ✅ Fully Covered |
+| `getUris`      | -                    | ❌ To Be Added   |
+| `getFiles`     | -                    | ❌ To Be Added   |
+| `getPeers`     | -                    | ❌ To Be Added   |
+| `getServers`   | -                    | ❌ To Be Added   |
 
 ### Configuration, History & System
 
 | Function                      | Pincer Equivalent           | Status           |
 |-------------------------------|-----------------------------|------------------|
-| `aria2.changeOption`          | `pin.changeOption`          | ✅ Fully Covered |
-| `aria2.getOption`             | `pin.getOption`             | ✅ Fully Covered |
-| `aria2.changeGlobalOption`    | `pin.changeGlobalOption`    | ✅ Fully Covered |
-| `aria2.getGlobalOption`       | `pin.getGlobalOption`       | ✅ Fully Covered |
-| `aria2.purgeDownloadResult`   | `pin.purgeDownloadResult`   | ✅ Fully Covered |
-| `aria2.removeDownloadResult`  | `pin.removeDownloadResult`  | ✅ Fully Covered |
-| `aria2.getVersion`            | `pin.getVersion`            | ✅ Fully Covered |
-| `aria2.getSessionInfo`        | -                           | ❌ To Be Added   |
-| `aria2.shutdown`              | `pin.shutdown`              | ✅ Fully Covered |
-| `aria2.forceShutdown`         | -                           | ❌ To Be Added   |
-| `aria2.saveSession`           | `pin.saveSession`           | ✅ Fully Covered |
+| `changeOption`          | `pin.changeOption`          | ✅ Fully Covered |
+| `getOption`             | `pin.getOption`             | ✅ Fully Covered |
+| `changeGlobalOption`    | `pin.changeGlobalOption`    | ✅ Fully Covered |
+| `getGlobalOption`       | `pin.getGlobalOption`       | ✅ Fully Covered |
+| `purgeDownloadResult`   | `pin.purgeDownloadResult`   | ✅ Fully Covered |
+| `removeDownloadResult`  | `pin.removeDownloadResult`  | ✅ Fully Covered |
+| `getVersion`            | `pin.getVersion`            | ✅ Fully Covered |
+| `getSessionInfo`        | -                           | ❌ To Be Added   |
+| `shutdown`              | `pin.shutdown`              | ✅ Fully Covered |
+| `forceShutdown`         | -                           | ❌ To Be Added   |
+| `saveSession`           | `pin.saveSession`           | ✅ Fully Covered |
 | `system.multicall`            | -                           | ❌ To Be Added   |
 | `system.listMethods`          | -                           | ❌ To Be Added   |
 | `system.listNotifications`    | -                           | ❌ To Be Added   |
@@ -327,12 +327,12 @@ Below is a detailed tracking table comparing functions available in Aria2 vs wha
 
 | Event                        | Pincer Equivalent         | Status           |
 |------------------------------|---------------------------|------------------|
-| `aria2.onDownloadStart`      | `pin.onDownloadStart`     | ✅ Fully Covered |
-| `aria2.onDownloadPause`      | `pin.onDownloadPause`     | ✅ Fully Covered |
-| `aria2.onDownloadComplete`   | `pin.onDownloadComplete`  | ✅ Fully Covered |
-| `aria2.onDownloadError`      | `pin.onDownloadError`     | ✅ Fully Covered |
-| `aria2.onDownloadStop`       | -                         | ❌ To Be Added   |
-| `aria2.onBtDownloadComplete` | -                         | ❌ To Be Added   |
+| `onDownloadStart`      | `pin.onDownloadStart`     | ✅ Fully Covered |
+| `onDownloadPause`      | `pin.onDownloadPause`     | ✅ Fully Covered |
+| `onDownloadComplete`   | `pin.onDownloadComplete`  | ✅ Fully Covered |
+| `onDownloadError`      | `pin.onDownloadError`     | ✅ Fully Covered |
+| `onDownloadStop`       | -                         | ❌ To Be Added   |
+| `onBtDownloadComplete` | -                         | ❌ To Be Added   |
 
 ---
 
@@ -361,5 +361,5 @@ Threads: 16
 ### Why use these features?
 1.  **99 Threads**: Maximizes bandwidth utilization on high-latency connections or from servers that throttle single-connection speeds.
 2.  **Session Persistence**: Critical for long-running downloads; protects progress against system crashes or engine restarts.
-3.  **Advanced CLI**: Allows developers and power users to use Pincer as a drop-in, high-performance replacement for `aria2c` or `wget`.
+3.  **Advanced CLI**: Allows developers and power users to use Pincer as a drop-in, high-performance download engine for grabbit.
 4.  **Worker Logs**: Provides transparency and allows users to debug connection issues or verify server range support in real-time.

@@ -9,9 +9,9 @@ You must use this program at your own risk.
 Introduction
 ------------
 
-Pincer is a modern, multithreaded download engine written in Rust. It is designed to be a lightweight, safe, and high-performance replacement for the Aria2 featureset, specifically tailored for modern desktop applications. 
+Pincer is a modern, multithreaded download engine written entirely in Rust from the ground up. It is designed to be a lightweight, safe, and high-performance core tailored for modern desktop applications that require robust file transfer capabilities.
 
-Like aria2, Pincer is a utility for downloading files. It supports concurrent segmented downloading, maximizing bandwidth by dividing files into chunks and downloading them across multiple parallel connections. Pincer ensures sequential resume, efficiently continuing downloads from exactly where they left off by utilizing HTTP Range headers. 
+Pincer handles downloads by dividing files into dynamic segments and fetching them across multiple parallel connections to maximize bandwidth. It features an advanced persistence layer that ensures sequential resume, efficiently continuing downloads from exactly where they left off by utilizing HTTP Range headers.
 
 Features
 --------
@@ -25,8 +25,8 @@ Here is a list of features:
 * Native Memory Safety through Rust
 * Sparse Writing using `write_at` for direct disk I/O
 * JSON-RPC (over WebSocket) interface for real-time status updates
-* 1:1 Feature parity mapping with standard Aria2 RPC commands
-* Multi-threaded Chunking and Worker Pool (Axel Pattern)
+* Standardized JSON-RPC interface for seamless integration
+* Multi-threaded Chunking and Worker Pool
 * Global throughput stats management
 
 Versioning and release schedule
@@ -84,7 +84,7 @@ WebSocket / JSON-RPC
 
 Pincer features an integrated RPC layer powered by Axum, which handles incoming WebSocket connections and processes JSON-RPC commands. 
 The WebSocket server embedded in Pincer listens on port `6842` by default (`ws://127.0.0.1:6842/jsonrpc`).
-It implements a 1:1 mapping with Aria2's JSON-RPC interface. 
+It implements a robust, proprietary JSON-RPC interface for full engine control.
 
 Architecture
 ------------
@@ -92,7 +92,7 @@ Architecture
 Pincer is built on the `tokio` async runtime and consists of three primary layers:
 1. **RPC Layer (Axum)**: Handles incoming WebSocket connections and processes JSON-RPC commands.
 2. **Management Layer**: Tracks download states, provides thread-safe access to task metadata, and manages global throughput stats.
-3. **Worker Pool (Axel Pattern)**: Each task spawns multiple workers that independently fetch segments and perform non-blocking concurrent writes to the disk using zero-allocation writes.
+3. **Worker Pool**: Each task spawns multiple workers that independently fetch segments and perform non-blocking concurrent writes to the disk using zero-allocation writes.
 
 References
 ----------

@@ -50,7 +50,7 @@ How the user interacts with the tool.
 As you move from **High-Level** to **Low-Level**, your ability to optimize speed increases, but your "Edge-Case" safety decreases.
 
 ### To Maintain Max Speed with Min Dependencies:
-1.  **Direct I/O (The "Aria2" Secret):**
+1.  **Direct I/O (The "Pincer" Secret):**
     Regardless of the library, use `file.set_len()` to pre-allocate space on disk. This prevents filesystem fragmentation during multi-connection downloads.
     
 

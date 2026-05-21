@@ -7,6 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+/// DownloadWorker represents a single connection thread downloading a specific byte range of a file.
+/// It streams the HTTP response directly to disk using thread-safe offset writing (`write_at`).
 pub struct DownloadWorker {
     pub id: usize,
     pub url: String,
@@ -19,6 +21,8 @@ pub struct DownloadWorker {
     pub active_threads: Arc<AtomicU64>,
 }
 
+/// A helper RAII guard that safely increments the active thread count when created,
+/// and automatically decrements it when dropped. Used for dynamic bandwidth distribution.
 struct ThreadGuard {
     counter: Arc<AtomicU64>,
 }
@@ -37,6 +41,8 @@ impl Drop for ThreadGuard {
 }
 
 impl DownloadWorker {
+    /// Executes the worker thread. Connects to the HTTP server, requests its specific byte range, 
+    /// and streams chunks to the file offset while yielding to global speed limits.
     pub async fn run(self, client: Client) -> Result<(), String> {
         let _guard = ThreadGuard::new(self.active_threads.clone());
         

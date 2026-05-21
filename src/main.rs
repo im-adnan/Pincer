@@ -11,6 +11,10 @@ use lexopt::ValueExt;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const BUILD_TYPE: &str = "dev";
 
+/// Entry point for the Pincer application.
+/// Parses CLI arguments using `lexopt`.
+/// If a URL is provided, it executes in Direct CLI Mode (downloading immediately).
+/// Otherwise, it starts the background WebSocket JSON-RPC server daemon.
 #[tokio::main]
 async fn main() -> Result<(), lexopt::Error> {
     let mut url = None;

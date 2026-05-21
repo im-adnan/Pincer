@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+/// Represents an incoming JSON-RPC request from a client.
+/// Follows the JSON-RPC 2.0 specification.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RPCRequest {
     pub jsonrpc: String,
@@ -8,6 +10,8 @@ pub struct RPCRequest {
     pub params: Option<serde_json::Value>,
 }
 
+/// Represents an outgoing JSON-RPC response back to the client.
+/// Can contain either a `result` payload or an `error`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RPCResponse<T> {
     pub id: String,
@@ -17,12 +21,15 @@ pub struct RPCResponse<T> {
     pub error: Option<RPCError>,
 }
 
+/// Defines a standard JSON-RPC error payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RPCError {
     pub code: i32,
     pub message: String,
 }
 
+/// Contains all status metadata for an active, paused, or completed download task.
+/// Includes progress, speed, and file information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskStatus {
     pub gid: String,
@@ -54,6 +61,7 @@ pub struct FileUri {
     pub uri: String,
 }
 
+/// Global engine statistics including total active tasks and cumulative bandwidth usage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalStat {
     #[serde(rename = "downloadSpeed")]
@@ -81,6 +89,7 @@ pub struct RPCNotification {
 pub struct NotificationParam {
     pub gid: String,
 }
+/// The result of resolving a URL, providing metadata before the download begins.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolveResponse {
     pub url: String,
@@ -93,6 +102,7 @@ pub struct ResolveResponse {
     pub is_resumable: Option<bool>,
 }
 
+/// Represents a serialized task saved to disk across sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionTask {
     pub id: String,

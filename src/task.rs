@@ -9,6 +9,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::worker::DownloadWorker;
 
+/// Represents the orchestrator for a single download instance. 
+/// It handles metadata discovery, pre-allocates disk space, calculates byte ranges, 
+/// and spawns one or more `DownloadWorker` asynchronous tasks.
 pub struct DownloadTask {
     pub url: String,
     pub filename: String,
@@ -21,6 +24,10 @@ pub struct DownloadTask {
 }
 
 impl DownloadTask {
+    /// Initiates the download lifecycle. 
+    /// Discovers metadata (Content-Length, Accept-Ranges) using HTTP HEAD/GET, allocates the file on disk,
+    /// divides the remaining byte range among the requested threads, and spawns the workers.
+    /// Returns a channel receiver to stream progress updates back to the orchestrator.
     pub async fn start(self, token: CancellationToken) -> Result<(u64, usize, Option<String>, bool, mpsc::Receiver<(usize, u64)>), String> {
         use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
         use std::str::FromStr;

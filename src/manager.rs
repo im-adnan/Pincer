@@ -8,6 +8,8 @@ use serde_json::Value;
 
 use crate::models::{TaskStatus, GlobalStat, NotificationParam, RPCNotification, FileData, FileUri};
 
+/// Internal control structure for managing a single download task's state.
+/// Holds the cancellation token, specific task options, and live speed calculation tracking data.
 struct TaskControl {
     status: TaskStatus,
     token: CancellationToken,
@@ -16,6 +18,9 @@ struct TaskControl {
     last_update_time: std::time::Instant,
 }
 
+/// The central orchestrator of the Pincer engine.
+/// Holds the global state, all active/paused tasks, global bandwidth limits, and handles 
+/// broadcasting status updates to all connected WebSocket clients via the `tx` channel.
 pub struct DownloadManager {
     tasks: RwLock<HashMap<String, TaskControl>>,
     global_options: RwLock<HashMap<String, String>>,
@@ -54,6 +59,8 @@ impl DownloadManager {
         dir.join("pincer.session")
     }
 
+    /// Serializes all current tasks and global options to `~/.pincer/pincer.session`.
+    /// Active tasks are marked as "paused" in the session file so they do not auto-resume on restart.
     pub async fn save_session(&self) {
         let tasks = self.tasks.read().await;
         let global_options = self.global_options.read().await;
@@ -99,6 +106,8 @@ impl DownloadManager {
         }
     }
 
+    /// Deserializes and loads tasks from the `pincer.session` file on startup.
+    /// Restores global options, bandwidth limits, and populates the task list.
     pub async fn load_session(self: &Arc<Self>) {
         let session_path = self.get_session_path();
         if !session_path.exists() {
@@ -243,6 +252,10 @@ impl DownloadManager {
         }
     }
 
+    /// Asynchronously spawns a new download task.
+    /// 1. Resolves a unique filename to prevent overwriting.
+    /// 2. Initializes the `TaskStatus` and broadcasts `pin.onDownloadStart`.
+    /// 3. Spawns the `DownloadTask` engine in the background and tracks its chunked progress.
     pub async fn spawn_task(self: &Arc<Self>, id: String, url: String, mut filename: String, dir: String, threads: usize, resume_offset: u64, headers: Vec<String>) {
         filename = self.generate_unique_filename(&filename, None).await;
         let token = CancellationToken::new();
@@ -699,6 +712,10 @@ impl DownloadManager {
         serde_json::to_string(&notification).unwrap_or_default()
     }
 
+    /// Universal metadata resolver. 
+    /// 1. Standard Resolution: Fetches HTTP HEAD/GET to read `Content-Length` and `Accept-Ranges`.
+    /// 2. Universal Fallback: If a web page is provided, it attempts to scrape OpenGraph tags 
+    ///    or embedded JSON payloads (e.g., Next.js) to find the actual media URL.
     pub async fn resolve_url(&self, url: String) -> Result<crate::models::ResolveResponse, String> {
         let client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")

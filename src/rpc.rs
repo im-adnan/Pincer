@@ -13,6 +13,8 @@ use tokio::sync::broadcast;
 use crate::manager::DownloadManager;
 use crate::models::{RPCRequest, RPCResponse, RPCError};
 
+/// Starts the background Axum JSON-RPC WebSocket server on port 6842.
+/// This runs infinitely to handle incoming client connections.
 pub async fn start_server(manager: Arc<DownloadManager>, _rx: broadcast::Receiver<String>) {
     let app = Router::new()
         .route("/jsonrpc", get(ws_handler))
@@ -34,6 +36,9 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, manager))
 }
 
+/// Core multiplexer for an individual WebSocket connection.
+/// It concurrently parses incoming JSON-RPC payloads (routing them to `handle_method`)
+/// and pushes outbound system notifications (from the global broadcast channel) back to the client.
 async fn handle_socket(
     socket: WebSocket,
     manager: Arc<DownloadManager>,
@@ -81,6 +86,9 @@ async fn handle_socket(
     }
 }
 
+/// The primary JSON-RPC router.
+/// Parses the `method` string (e.g., `pin.addUri`) and maps the parameters 
+/// directly to the corresponding asynchronous operation on the `DownloadManager`.
 async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCResponse<serde_json::Value> {
     let method = req.method.as_str();
     

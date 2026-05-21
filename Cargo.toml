@@ -1,0 +1,27 @@
+[package]
+name = "pincer"
+version = "1.1.4-dev"
+edition = "2021"
+description = "A high-performance, multithreaded, zero-allocation concurrent download engine written in Rust"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/im-adnan/pincer"
+homepage = "https://github.com/im-adnan/pincer"
+readme = "README.md"
+keywords = ["downloader", "multithreaded", "http", "json-rpc", "high-performance"]
+categories = ["network-programming", "command-line-utilities"]
+
+[dependencies]
+tokio = { version = "1.34", features = ["full"] }
+axum = { version = "0.7", features = ["ws"] }
+reqwest = { version = "0.11", features = ["stream", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures = "0.3"
+uuid = { version = "1.6", features = ["v4"] }
+bytes = "1.5"
+tokio-stream = "0.1"
+tokio-util = "0.7.18"
+trash = "5.2.2"
+regex = "1.10"
+percent-encoding = "2.3"
+lexopt = "0.3"

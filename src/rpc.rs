@@ -2,7 +2,7 @@ use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::Response,
     routing::get,
-    Router, Extension,
+    Extension, Router,
 };
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde_json::json;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use crate::manager::DownloadManager;
-use crate::models::{RPCRequest, RPCResponse, RPCError};
+use crate::models::{RPCError, RPCRequest, RPCResponse};
 
 /// Starts the background Axum JSON-RPC WebSocket server on port 6842.
 /// This runs infinitely to handle incoming client connections.
@@ -22,7 +22,7 @@ pub async fn start_server(manager: Arc<DownloadManager>, _rx: broadcast::Receive
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:6842").await.unwrap();
     println!("Pincer listening on ws://0.0.0.0:6842/jsonrpc");
-    
+
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("RPC Server Error: {}", e);
     }
@@ -39,10 +39,7 @@ async fn ws_handler(
 /// Core multiplexer for an individual WebSocket connection.
 /// It concurrently parses incoming JSON-RPC payloads (routing them to `handle_method`)
 /// and pushes outbound system notifications (from the global broadcast channel) back to the client.
-async fn handle_socket(
-    socket: WebSocket,
-    manager: Arc<DownloadManager>,
-) {
+async fn handle_socket(socket: WebSocket, manager: Arc<DownloadManager>) {
     let (mut sender, mut receiver) = socket.split();
     let mut notification_rx = manager.subscribe();
 
@@ -58,7 +55,7 @@ async fn handle_socket(
                         Message::Close(_) => break,
                         _ => None,
                     };
-                    
+
                     if let Some(text) = text {
                         println!("Received RPC: {}", text);
                         if let Ok(req) = serde_json::from_str::<RPCRequest>(&text) {
@@ -87,28 +84,34 @@ async fn handle_socket(
 }
 
 /// The primary JSON-RPC router.
-/// Parses the `method` string (e.g., `pin.addUri`) and maps the parameters 
+/// Parses the `method` string (e.g., `pin.addUri`) and maps the parameters
 /// directly to the corresponding asynchronous operation on the `DownloadManager`.
-async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCResponse<serde_json::Value> {
+async fn handle_method(
+    req: RPCRequest,
+    manager: &Arc<DownloadManager>,
+) -> RPCResponse<serde_json::Value> {
     let method = req.method.as_str();
-    
+
     let result = match method {
         "pin.tellActive" => {
             let active = manager.get_active_tasks().await;
             Some(serde_json::to_value(active).unwrap())
-        },
+        }
         "pin.tellWaiting" => {
             let waiting = manager.get_waiting_tasks(0, 100).await;
             Some(serde_json::to_value(waiting).unwrap())
-        },
+        }
         "pin.tellStopped" => {
             let stopped = manager.get_stopped_tasks(0, 100).await;
             Some(serde_json::to_value(stopped).unwrap())
-        },
+        }
         "pin.tellStatus" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let gid = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         // Format: ["token:secret", "gid"]
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
@@ -128,15 +131,18 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
             } else {
                 None
             }
-        },
+        }
         "pin.getGlobalStat" => {
             let stat = manager.get_global_stat().await;
             Some(serde_json::to_value(stat).unwrap())
-        },
+        }
         "pin.pause" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let gid = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         params_array.get(0).and_then(|v| v.as_str())
@@ -154,15 +160,18 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
             } else {
                 None
             }
-        },
+        }
         "pin.pauseAll" => {
             manager.pause_all_tasks().await;
             Some(json!("OK"))
-        },
+        }
         "pin.unpause" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let gid = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         params_array.get(0).and_then(|v| v.as_str())
@@ -180,15 +189,18 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
             } else {
                 None
             }
-        },
+        }
         "pin.unpauseAll" => {
             manager.unpause_all_tasks().await;
             Some(json!("OK"))
-        },
+        }
         "pin.remove" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let gid = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         params_array.get(0).and_then(|v| v.as_str())
@@ -206,11 +218,14 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
             } else {
                 None
             }
-        },
+        }
         "pin.removeAndFile" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let gid = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         params_array.get(0).and_then(|v| v.as_str())
@@ -228,11 +243,14 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
             } else {
                 None
             }
-        },
+        }
         "pin.forceRemove" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let gid = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         params_array.get(0).and_then(|v| v.as_str())
@@ -250,57 +268,91 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
             } else {
                 None
             }
-        },
+        }
         "pin.addUri" => {
             let id = uuid::Uuid::new_v4().to_string();
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
                     if params_array.len() >= 2 {
-                        let (uris_val, options_val) = if params_array.len() >= 3 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                        let (uris_val, options_val) = if params_array.len() >= 3
+                            && params_array[0].is_string()
+                            && params_array[0].as_str().unwrap().contains(':')
+                        {
                             (&params_array[1], &params_array[2])
                         } else {
                             (&params_array[0], &params_array[1])
                         };
 
-                        if let (Some(uris), Some(options)) = (uris_val.as_array(), options_val.as_object()) {
+                        if let (Some(uris), Some(options)) =
+                            (uris_val.as_array(), options_val.as_object())
+                        {
                             if let Some(first_uri) = uris.first().and_then(|v| v.as_str()) {
                                 let url = first_uri.to_string();
                                 let default_dir = std::env::var("HOME")
                                     .map(|h| format!("{}/Downloads", h))
                                     .unwrap_or_else(|_| "/tmp".to_string());
 
-                                let dir = options.get("dir").and_then(|v| v.as_str()).unwrap_or(&default_dir).to_string();
-                                let filename = options.get("out").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| {
-                                    url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string()
-                                });
-                                let threads = options.get("split").and_then(|v| v.as_str()).and_then(|s| s.parse::<usize>().ok())
-                                    .unwrap_or_else(|| manager.default_split.load(std::sync::atomic::Ordering::Relaxed) as usize);
-                                
+                                let dir = options
+                                    .get("dir")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&default_dir)
+                                    .to_string();
+                                let filename = options
+                                    .get("out")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| {
+                                        url.split('/')
+                                            .last()
+                                            .unwrap_or("download.bin")
+                                            .split('?')
+                                            .next()
+                                            .unwrap_or("download.bin")
+                                            .to_string()
+                                    });
+                                let threads = options
+                                    .get("split")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| s.parse::<usize>().ok())
+                                    .unwrap_or_else(|| {
+                                        manager
+                                            .default_split
+                                            .load(std::sync::atomic::Ordering::Relaxed)
+                                            as usize
+                                    });
+
                                 let mut headers = Vec::new();
-                                if let Some(header_str) = options.get("header").and_then(|v| v.as_str()) {
+                                if let Some(header_str) =
+                                    options.get("header").and_then(|v| v.as_str())
+                                {
                                     for line in header_str.split('\n') {
                                         if !line.trim().is_empty() {
                                             headers.push(line.trim().to_string());
                                         }
                                     }
                                 }
-                                
-                                manager.spawn_task(id.clone(), url, filename, dir, threads, 0, headers).await;
+
+                                manager
+                                    .spawn_task(id.clone(), url, filename, dir, threads, 0, headers)
+                                    .await;
                             }
                         }
                     }
                 }
             }
             Some(serde_json::to_value(id).unwrap())
-        },
+        }
         "pin.addTorrent" => {
             // Stub for now, returns error or empty success
             Some(json!("NOT_IMPLEMENTED_YET"))
-        },
+        }
         "pin.changeGlobalOption" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let options_val = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let options_val = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1)
                     } else {
                         params_array.get(0)
@@ -315,24 +367,41 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                         }
                         manager.change_global_option(opts).await;
                         Some(json!("OK"))
-                    } else { None }
-                } else { None }
-            } else { None }
-        },
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
         "pin.getGlobalOption" => {
             let opts = manager.get_global_option().await;
             Some(serde_json::to_value(opts).unwrap())
-        },
+        }
         "pin.changeOption" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let (gid, options_val) = if params_array.len() >= 3 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
-                        (params_array.get(1).and_then(|v| v.as_str()), params_array.get(2))
+                    let (gid, options_val) = if params_array.len() >= 3
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
+                        (
+                            params_array.get(1).and_then(|v| v.as_str()),
+                            params_array.get(2),
+                        )
                     } else {
-                        (params_array.get(0).and_then(|v| v.as_str()), params_array.get(1))
+                        (
+                            params_array.get(0).and_then(|v| v.as_str()),
+                            params_array.get(1),
+                        )
                     };
 
-                    if let (Some(gid), Some(options_obj)) = (gid, options_val.and_then(|v| v.as_object())) {
+                    if let (Some(gid), Some(options_obj)) =
+                        (gid, options_val.and_then(|v| v.as_object()))
+                    {
                         let mut opts = HashMap::new();
                         for (k, v) in options_obj {
                             if let Some(s) = v.as_str() {
@@ -341,14 +410,23 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                         }
                         let success = manager.change_option(gid, opts).await;
                         Some(serde_json::to_value(success).unwrap())
-                    } else { None }
-                } else { None }
-            } else { None }
-        },
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
         "pin.getOption" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let gid = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         params_array.get(0).and_then(|v| v.as_str())
@@ -357,18 +435,27 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                     if let Some(gid) = gid {
                         let opts = manager.get_option(gid).await;
                         Some(serde_json::to_value(opts).unwrap())
-                    } else { None }
-                } else { None }
-            } else { None }
-        },
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
         "pin.purgeDownloadResult" => {
             manager.purge_download_result().await;
             Some(json!("OK"))
-        },
+        }
         "pin.removeDownloadResult" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let gid = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let gid = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         params_array.get(0).and_then(|v| v.as_str())
@@ -377,14 +464,23 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                     if let Some(gid) = gid {
                         let success = manager.remove_download_result(gid).await;
                         Some(serde_json::to_value(success).unwrap())
-                    } else { None }
-                } else { None }
-            } else { None }
-        },
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
         "pin.resolveUrl" => {
             if let Some(params) = &req.params {
                 if let Some(params_array) = params.as_array() {
-                    let url = if params_array.len() >= 2 && params_array[0].is_string() && params_array[0].as_str().unwrap().contains(':') {
+                    let url = if params_array.len() >= 2
+                        && params_array[0].is_string()
+                        && params_array[0].as_str().unwrap().contains(':')
+                    {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         params_array.get(0).and_then(|v| v.as_str())
@@ -392,14 +488,10 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
 
                     if let Some(url) = url {
                         match manager.resolve_url(url.to_string()).await {
-                            Ok(res) => {
-                                Some(serde_json::to_value(res).unwrap())
-                            },
-                            Err(e) => {
-                                Some(json!({
-                                    "error": e
-                                }))
-                            }
+                            Ok(res) => Some(serde_json::to_value(res).unwrap()),
+                            Err(e) => Some(json!({
+                                "error": e
+                            })),
                         }
                     } else {
                         None
@@ -410,17 +502,17 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
             } else {
                 None
             }
-        },
+        }
         "pin.getVersion" => {
             let version = manager.get_version();
             Some(json!({
                 "version": version
             }))
-        },
+        }
         "pin.saveSession" => {
             manager.save_session().await;
             Some(json!("OK"))
-        },
+        }
         "pin.shutdown" => {
             println!("Received shutdown command. Gracefully shutting down...");
             tokio::spawn(async {
@@ -428,12 +520,15 @@ async fn handle_method(req: RPCRequest, manager: &Arc<DownloadManager>) -> RPCRe
                 std::process::exit(0);
             });
             Some(json!("OK"))
-        },
+        }
         _ => None,
     };
 
     let error = if result.is_none() {
-        Some(RPCError { code: -32601, message: "Method not found".to_string() })
+        Some(RPCError {
+            code: -32601,
+            message: "Method not found".to_string(),
+        })
     } else {
         None
     };

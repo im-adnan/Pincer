@@ -1,12 +1,14 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::{broadcast, RwLock};
-use tokio_util::sync::CancellationToken;
 use regex::Regex;
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use tokio::sync::{broadcast, RwLock};
+use tokio_util::sync::CancellationToken;
 
-use crate::models::{TaskStatus, GlobalStat, NotificationParam, RPCNotification, FileData, FileUri};
+use crate::models::{
+    FileData, FileUri, GlobalStat, NotificationParam, RPCNotification, TaskStatus,
+};
 
 /// Internal control structure for managing a single download task's state.
 /// Holds the cancellation token, specific task options, and live speed calculation tracking data.
@@ -19,7 +21,7 @@ struct TaskControl {
 }
 
 /// The central orchestrator of the Pincer engine.
-/// Holds the global state, all active/paused tasks, global bandwidth limits, and handles 
+/// Holds the global state, all active/paused tasks, global bandwidth limits, and handles
 /// broadcasting status updates to all connected WebSocket clients via the `tx` channel.
 pub struct DownloadManager {
     tasks: RwLock<HashMap<String, TaskControl>>,
@@ -74,16 +76,42 @@ impl DownloadManager {
                 s => s.to_string(),
             };
 
-            let first_uri = status.files.first().and_then(|f| f.uris.first().map(|u| u.uri.clone())).unwrap_or_default();
-            let filename = status.files.first().and_then(|f| std::path::Path::new(&f.path).file_name().and_then(|s| s.to_str()).map(|s| s.to_string())).unwrap_or_default();
-            let headers = control.options.get("header").map(|h| h.split('\n').map(|s| s.to_string()).filter(|s| !s.is_empty()).collect()).unwrap_or_default();
+            let first_uri = status
+                .files
+                .first()
+                .and_then(|f| f.uris.first().map(|u| u.uri.clone()))
+                .unwrap_or_default();
+            let filename = status
+                .files
+                .first()
+                .and_then(|f| {
+                    std::path::Path::new(&f.path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string())
+                })
+                .unwrap_or_default();
+            let headers = control
+                .options
+                .get("header")
+                .map(|h| {
+                    h.split('\n')
+                        .map(|s| s.to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
 
             session_tasks.push(crate::models::SessionTask {
                 id: id.clone(),
                 url: first_uri,
                 filename,
                 save_path: status.dir.clone(),
-                threads: control.options.get("split").and_then(|s| s.parse::<usize>().ok()).unwrap_or(4),
+                threads: control
+                    .options
+                    .get("split")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(4),
                 headers,
                 status: saved_status,
                 total_length: status.total_length.parse::<u64>().unwrap_or(0),
@@ -117,7 +145,8 @@ impl DownloadManager {
 
         println!("Loading session from {:?}", session_path);
         if let Ok(json_str) = std::fs::read_to_string(&session_path) {
-            if let Ok(session_data) = serde_json::from_str::<crate::models::SessionData>(&json_str) {
+            if let Ok(session_data) = serde_json::from_str::<crate::models::SessionData>(&json_str)
+            {
                 // Restore global options
                 {
                     let mut global_opts = self.global_options.write().await;
@@ -155,48 +184,67 @@ impl DownloadManager {
                         is_resumable: Some(true),
                         files: vec![FileData {
                             path: format!("{}/{}", task.save_path, task.filename),
-                            uris: vec![FileUri { uri: task.url.clone() }],
+                            uris: vec![FileUri {
+                                uri: task.url.clone(),
+                            }],
                         }],
                         dir: task.save_path.clone(),
                     };
 
                     {
                         let mut tasks = self.tasks.write().await;
-                        tasks.insert(task.id.clone(), TaskControl {
-                            status: initial_status,
-                            token: CancellationToken::new(),
-                            options: opts,
-                            last_update_bytes: 0,
-                            last_update_time: std::time::Instant::now(),
-                        });
+                        tasks.insert(
+                            task.id.clone(),
+                            TaskControl {
+                                status: initial_status,
+                                token: CancellationToken::new(),
+                                options: opts,
+                                last_update_bytes: 0,
+                                last_update_time: std::time::Instant::now(),
+                            },
+                        );
                     }
                 }
-                println!("Session successfully loaded. Restored {} tasks.", session_data.tasks.len());
+                println!(
+                    "Session successfully loaded. Restored {} tasks.",
+                    session_data.tasks.len()
+                );
             } else {
                 eprintln!("Failed to parse session file at {:?}", session_path);
             }
         }
     }
 
-    pub async fn generate_unique_filename(&self, filename: &str, excluding_gid: Option<&str>) -> String {
+    pub async fn generate_unique_filename(
+        &self,
+        filename: &str,
+        excluding_gid: Option<&str>,
+    ) -> String {
         let tasks = self.tasks.read().await;
         let mut unique_name = filename.to_string();
         let mut counter = 1;
-        
+
         let path = std::path::Path::new(filename);
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(filename);
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or(filename);
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        
+
         while tasks.values().any(|c| {
             if let Some(egid) = excluding_gid {
-                if c.status.gid == egid { return false; }
+                if c.status.gid == egid {
+                    return false;
+                }
             }
             if let Some(file) = c.status.files.first() {
                 let existing_filename = std::path::Path::new(&file.path)
                     .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
-                if existing_filename == unique_name { return true; }
+                if existing_filename == unique_name {
+                    return true;
+                }
             }
             false
         }) {
@@ -214,17 +262,28 @@ impl DownloadManager {
         self.tx.subscribe()
     }
 
-    pub async fn _add_task(&self, id: String, status: TaskStatus, token: CancellationToken, options: HashMap<String, String>) {
+    pub async fn _add_task(
+        &self,
+        id: String,
+        status: TaskStatus,
+        token: CancellationToken,
+        options: HashMap<String, String>,
+    ) {
         let mut tasks = self.tasks.write().await;
-        tasks.insert(id.clone(), TaskControl { 
-            status, 
-            token, 
-            options,
-            last_update_bytes: 0,
-            last_update_time: std::time::Instant::now(),
-        });
+        tasks.insert(
+            id.clone(),
+            TaskControl {
+                status,
+                token,
+                options,
+                last_update_bytes: 0,
+                last_update_time: std::time::Instant::now(),
+            },
+        );
         // Dispatch start event
-        let _ = self.tx.send(self.build_notification("pin.onDownloadStart", &id));
+        let _ = self
+            .tx
+            .send(self.build_notification("pin.onDownloadStart", &id));
     }
 
     pub async fn update_task_progress(&self, id: &str, worker_id: usize, downloaded_chunk: u64) {
@@ -233,7 +292,7 @@ impl DownloadManager {
             let current_completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
             let new_completed = current_completed + downloaded_chunk;
             control.status.completed_length = new_completed.to_string();
-            
+
             // Update per-worker progress
             if worker_id < control.status.worker_progress.len() {
                 control.status.worker_progress[worker_id] += downloaded_chunk;
@@ -256,17 +315,26 @@ impl DownloadManager {
     /// 1. Resolves a unique filename to prevent overwriting.
     /// 2. Initializes the `TaskStatus` and broadcasts `pin.onDownloadStart`.
     /// 3. Spawns the `DownloadTask` engine in the background and tracks its chunked progress.
-    pub async fn spawn_task(self: &Arc<Self>, id: String, url: String, mut filename: String, dir: String, threads: usize, resume_offset: u64, headers: Vec<String>) {
+    pub async fn spawn_task(
+        self: &Arc<Self>,
+        id: String,
+        url: String,
+        mut filename: String,
+        dir: String,
+        threads: usize,
+        resume_offset: u64,
+        headers: Vec<String>,
+    ) {
         filename = self.generate_unique_filename(&filename, None).await;
         let token = CancellationToken::new();
-        
+
         let completed_length = if resume_offset > 0 {
             resume_offset.to_string()
         } else {
             "0".to_string()
         };
 
-        // 1. Register the task initially as "active" 
+        // 1. Register the task initially as "active"
         // (or update existing one if it's a resume)
         let initial_status = TaskStatus {
             gid: id.clone(),
@@ -283,7 +351,7 @@ impl DownloadManager {
             }],
             dir: dir.clone(),
         };
-        
+
         {
             let mut tasks = self.tasks.write().await;
             let mut opts = HashMap::new();
@@ -293,19 +361,24 @@ impl DownloadManager {
             if !headers.is_empty() {
                 opts.insert("header".to_string(), headers.join("\n"));
             }
-            
-            tasks.insert(id.clone(), TaskControl { 
-                status: initial_status, 
-                token: token.clone(),
-                options: opts,
-                last_update_bytes: 0,
-                last_update_time: std::time::Instant::now(),
-            });
+
+            tasks.insert(
+                id.clone(),
+                TaskControl {
+                    status: initial_status,
+                    token: token.clone(),
+                    options: opts,
+                    last_update_bytes: 0,
+                    last_update_time: std::time::Instant::now(),
+                },
+            );
         }
-        
+
         self.save_session().await;
-        
-        let _ = self.tx.send(self.build_notification("pin.onDownloadStart", &id));
+
+        let _ = self
+            .tx
+            .send(self.build_notification("pin.onDownloadStart", &id));
 
         // 2. Spawn the background rust task
         let manager_clone = self.clone();
@@ -332,26 +405,34 @@ impl DownloadManager {
                             control.status.is_resumable = Some(is_resumable);
                         }
                     }
-                    
+
                     while let Some((worker_id, bytes_chunk)) = progress_rx.recv().await {
-                        manager_clone.update_task_progress(&id_clone, worker_id, bytes_chunk).await;
+                        manager_clone
+                            .update_task_progress(&id_clone, worker_id, bytes_chunk)
+                            .await;
                     }
-                    
+
                     // Check if it was cancelled or finished
                     {
                         let mut locks = manager_clone.tasks.write().await;
                         if let Some(control) = locks.get_mut(&id_clone) {
                             if token.is_cancelled() {
                                 control.status.status = "paused".to_string();
-                                let _ = manager_clone.tx.send(manager_clone.build_notification("pin.onDownloadPause", &id_clone));
+                                let _ = manager_clone.tx.send(
+                                    manager_clone
+                                        .build_notification("pin.onDownloadPause", &id_clone),
+                                );
                             } else {
                                 control.status.status = "complete".to_string();
-                                let _ = manager_clone.tx.send(manager_clone.build_notification("pin.onDownloadComplete", &id_clone));
+                                let _ = manager_clone.tx.send(
+                                    manager_clone
+                                        .build_notification("pin.onDownloadComplete", &id_clone),
+                                );
                             }
                         }
                     }
                     manager_clone.save_session().await;
-                },
+                }
                 Err(e) => {
                     eprintln!("Task '{}' failed: {}", id_clone, e);
                     {
@@ -360,7 +441,9 @@ impl DownloadManager {
                             control.status.status = "error".to_string();
                         }
                     }
-                    let _ = manager_clone.tx.send(manager_clone.build_notification("pin.onDownloadError", &id_clone));
+                    let _ = manager_clone
+                        .tx
+                        .send(manager_clone.build_notification("pin.onDownloadError", &id_clone));
                     manager_clone.save_session().await;
                 }
             }
@@ -374,7 +457,9 @@ impl DownloadManager {
                 control.token.cancel();
                 control.status.status = "paused".to_string();
                 // Dispatch pause event immediately for UI responsiveness
-                let _ = self.tx.send(self.build_notification("pin.onDownloadPause", id));
+                let _ = self
+                    .tx
+                    .send(self.build_notification("pin.onDownloadPause", id));
                 true
             } else {
                 false
@@ -393,7 +478,9 @@ impl DownloadManager {
                 if control.status.status == "active" || control.status.status == "waiting" {
                     control.token.cancel();
                     control.status.status = "paused".to_string();
-                    let _ = self.tx.send(self.build_notification("pin.onDownloadPause", gid));
+                    let _ = self
+                        .tx
+                        .send(self.build_notification("pin.onDownloadPause", gid));
                 }
             }
         }
@@ -414,12 +501,23 @@ impl DownloadManager {
                 }
                 let url = control.status.files[0].uris[0].uri.clone();
                 let filename = std::path::Path::new(&control.status.files[0].path)
-                    .file_name().unwrap_or_default().to_string_lossy().to_string();
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 let dir = control.status.dir.clone();
                 let resume_offset = control.status.completed_length.parse::<u64>().unwrap_or(0);
-                let threads = control.options.get("split").and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+                let threads = control
+                    .options
+                    .get("split")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(1);
                 let headers: Vec<String> = if let Some(header_str) = control.options.get("header") {
-                    header_str.split('\n').filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string()).collect()
+                    header_str
+                        .split('\n')
+                        .filter(|s| !s.trim().is_empty())
+                        .map(|s| s.trim().to_string())
+                        .collect()
                 } else {
                     Vec::new()
                 };
@@ -429,7 +527,16 @@ impl DownloadManager {
             }
         };
 
-        self.spawn_task(id.to_string(), url, filename, dir, threads, resume_offset, headers).await;
+        self.spawn_task(
+            id.to_string(),
+            url,
+            filename,
+            dir,
+            threads,
+            resume_offset,
+            headers,
+        )
+        .await;
         self.save_session().await;
         true
     }
@@ -437,12 +544,13 @@ impl DownloadManager {
     pub async fn unpause_all_tasks(self: &Arc<Self>) {
         let gids: Vec<String> = {
             let tasks = self.tasks.read().await;
-            tasks.iter()
+            tasks
+                .iter()
                 .filter(|(_, c)| {
-                    c.status.status == "paused" || 
-                    c.status.status == "waiting" || 
-                    c.status.status == "error" || 
-                    c.status.status == "removed"
+                    c.status.status == "paused"
+                        || c.status.status == "waiting"
+                        || c.status.status == "error"
+                        || c.status.status == "removed"
                 })
                 .map(|(id, _)| id.clone())
                 .collect()
@@ -474,13 +582,16 @@ impl DownloadManager {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.remove(id) {
                 control.token.cancel();
-                
+
                 // Attempt to move files to trash
                 for file in &control.status.files {
                     let path = std::path::Path::new(&file.path);
                     if path.exists() {
                         if let Err(e) = trash::delete(path) {
-                            eprintln!("[ERROR] Failed to move file to trash '{}': {}", file.path, e);
+                            eprintln!(
+                                "[ERROR] Failed to move file to trash '{}': {}",
+                                file.path, e
+                            );
                         } else {
                             println!("[INFO] Moved to trash: {}", file.path);
                         }
@@ -524,7 +635,8 @@ impl DownloadManager {
 
     pub async fn get_active_tasks(&self) -> Vec<TaskStatus> {
         let tasks = self.tasks.read().await;
-        tasks.values()
+        tasks
+            .values()
             .filter(|c| c.status.status == "active")
             .map(|c| {
                 let mut status = c.status.clone();
@@ -536,12 +648,24 @@ impl DownloadManager {
 
     pub async fn get_waiting_tasks(&self, _offset: usize, _num: usize) -> Vec<TaskStatus> {
         let tasks = self.tasks.read().await;
-        tasks.values().filter(|c| c.status.status == "waiting" || c.status.status == "paused").map(|c| c.status.clone()).collect()
+        tasks
+            .values()
+            .filter(|c| c.status.status == "waiting" || c.status.status == "paused")
+            .map(|c| c.status.clone())
+            .collect()
     }
 
     pub async fn get_stopped_tasks(&self, _offset: usize, _num: usize) -> Vec<TaskStatus> {
         let tasks = self.tasks.read().await;
-        tasks.values().filter(|c| c.status.status == "complete" || c.status.status == "error" || c.status.status == "removed").map(|c| c.status.clone()).collect()
+        tasks
+            .values()
+            .filter(|c| {
+                c.status.status == "complete"
+                    || c.status.status == "error"
+                    || c.status.status == "removed"
+            })
+            .map(|c| c.status.clone())
+            .collect()
     }
 
     pub async fn get_global_stat(&self) -> GlobalStat {
@@ -556,7 +680,7 @@ impl DownloadManager {
                 "active" => {
                     active += 1;
                     total_download_speed += self.calculate_current_speed(control);
-                },
+                }
                 "waiting" | "paused" => waiting += 1,
                 "complete" | "error" | "removed" => stopped += 1,
                 _ => {}
@@ -565,11 +689,16 @@ impl DownloadManager {
 
         let current_mode = {
             let opts = self.global_options.read().await;
-            opts.get("speed-mode").cloned().unwrap_or_else(|| "max_bandwidth".to_string())
+            opts.get("speed-mode")
+                .cloned()
+                .unwrap_or_else(|| "max_bandwidth".to_string())
         };
 
-        if (current_mode == "max_bandwidth" || current_mode == "max") && total_download_speed > self.max_seen_speed.load(Ordering::Relaxed) {
-             self.max_seen_speed.store(total_download_speed, Ordering::Relaxed);
+        if (current_mode == "max_bandwidth" || current_mode == "max")
+            && total_download_speed > self.max_seen_speed.load(Ordering::Relaxed)
+        {
+            self.max_seen_speed
+                .store(total_download_speed, Ordering::Relaxed);
         }
 
         GlobalStat {
@@ -587,17 +716,17 @@ impl DownloadManager {
             match mode.as_str() {
                 "max_bandwidth" | "max" => {
                     self.current_limit.store(0, Ordering::Relaxed);
-                },
+                }
                 "half_bandwidth" | "half" => {
                     let peak = self.max_seen_speed.load(Ordering::Relaxed);
                     // Use peak / 2, with a fallback floor of 1MB/s if peak is unknown
                     let half_speed = std::cmp::max(peak / 2, 1024 * 1024);
                     self.current_limit.store(half_speed, Ordering::Relaxed);
-                },
+                }
                 "min_bandwidth" | "min" => {
                     // Refined min: Sub-kb/s limit, NO pause
                     self.current_limit.store(768, Ordering::Relaxed); // 768 bytes/s is sub-kb
-                },
+                }
                 _ => {}
             }
         }
@@ -608,7 +737,10 @@ impl DownloadManager {
             }
         }
 
-        if let Some(split_str) = options.get("split").or_else(|| options.get("default-split")) {
+        if let Some(split_str) = options
+            .get("split")
+            .or_else(|| options.get("default-split"))
+        {
             if let Ok(split) = split_str.parse::<u64>() {
                 self.default_split.store(split.min(99), Ordering::Relaxed);
             }
@@ -663,16 +795,19 @@ impl DownloadManager {
     pub async fn purge_download_result(&self) {
         let mut tasks = self.tasks.write().await;
         tasks.retain(|_, control| {
-            control.status.status != "complete" && 
-            control.status.status != "error" && 
-            control.status.status != "removed"
+            control.status.status != "complete"
+                && control.status.status != "error"
+                && control.status.status != "removed"
         });
     }
 
     pub async fn remove_download_result(&self, id: &str) -> bool {
         let mut tasks = self.tasks.write().await;
         if let Some(control) = tasks.get(id) {
-            if control.status.status == "complete" || control.status.status == "error" || control.status.status == "removed" {
+            if control.status.status == "complete"
+                || control.status.status == "error"
+                || control.status.status == "removed"
+            {
                 tasks.remove(id);
                 return true;
             }
@@ -684,17 +819,17 @@ impl DownloadManager {
         if control.status.status != "active" {
             return 0;
         }
-        
+
         let now = std::time::Instant::now();
         let elapsed = now.duration_since(control.last_update_time).as_secs_f64();
-        
+
         let reported_speed = control.status.download_speed.parse::<u64>().unwrap_or(0);
-        
+
         // If we recently got a chunk (within 1s), use the reported speed
         if elapsed <= 1.0 {
             return reported_speed;
         }
-        
+
         // Otherwise, recalculate based on wall-clock time since last chunk
         let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
         let bytes_diff = completed.saturating_sub(control.last_update_bytes);
@@ -712,9 +847,9 @@ impl DownloadManager {
         serde_json::to_string(&notification).unwrap_or_default()
     }
 
-    /// Universal metadata resolver. 
+    /// Universal metadata resolver.
     /// 1. Standard Resolution: Fetches HTTP HEAD/GET to read `Content-Length` and `Accept-Ranges`.
-    /// 2. Universal Fallback: If a web page is provided, it attempts to scrape OpenGraph tags 
+    /// 2. Universal Fallback: If a web page is provided, it attempts to scrape OpenGraph tags
     ///    or embedded JSON payloads (e.g., Next.js) to find the actual media URL.
     pub async fn resolve_url(&self, url: String) -> Result<crate::models::ResolveResponse, String> {
         let client = reqwest::Client::builder()
@@ -725,27 +860,32 @@ impl DownloadManager {
         // 1. Standard Redirect Resolution (Current Logic)
         let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
         let final_url = response.url().to_string();
-        
-        let content_type = response.headers()
+
+        let content_type = response
+            .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|h| h.to_str().ok())
-            .unwrap_or("").to_string();
+            .unwrap_or("")
+            .to_string();
 
         // If the result is already a direct video file, return it
-        if content_type.contains("video/") || 
-           final_url.split('?').next().unwrap_or("").ends_with(".mp4") || 
-           final_url.split('?').next().unwrap_or("").ends_with(".mkv") {
-            
-            let total_size = response.headers()
+        if content_type.contains("video/")
+            || final_url.split('?').next().unwrap_or("").ends_with(".mp4")
+            || final_url.split('?').next().unwrap_or("").ends_with(".mkv")
+        {
+            let total_size = response
+                .headers()
                 .get(reqwest::header::CONTENT_LENGTH)
                 .and_then(|h| h.to_str().ok())
                 .and_then(|s| s.parse::<i64>().ok());
-            
-            let is_resumable = response.headers()
+
+            let is_resumable = response
+                .headers()
                 .get(reqwest::header::ACCEPT_RANGES)
                 .and_then(|h| h.to_str().ok())
                 .map(|s| s == "bytes");
-            let filename = response.headers()
+            let filename = response
+                .headers()
                 .get(reqwest::header::CONTENT_DISPOSITION)
                 .and_then(|h| h.to_str().ok())
                 .and_then(|s| {
@@ -758,9 +898,15 @@ impl DownloadManager {
                     }
                 })
                 .unwrap_or_else(|| {
-                    final_url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string()
+                    final_url
+                        .split('/')
+                        .last()
+                        .unwrap_or("download.bin")
+                        .split('?')
+                        .next()
+                        .unwrap_or("download.bin")
+                        .to_string()
                 });
-
 
             return Ok(crate::models::ResolveResponse {
                 url: final_url,
@@ -776,12 +922,19 @@ impl DownloadManager {
             let html = response.text().await.map_err(|e| e.to_string())?;
 
             // A. Universal Meta Tags (OpenGraph / Twitter)
-            let og_video_re = Regex::new(r#"<meta property="(?:og:video|twitter:player)" content="(.*?)"#).unwrap();
-            let og_title_re = Regex::new(r#"<meta property="(?:og:title|twitter:title)" content="(.*?)"#).unwrap();
+            let og_video_re =
+                Regex::new(r#"<meta property="(?:og:video|twitter:player)" content="(.*?)"#)
+                    .unwrap();
+            let og_title_re =
+                Regex::new(r#"<meta property="(?:og:title|twitter:title)" content="(.*?)"#)
+                    .unwrap();
 
             if let Some(caps) = og_video_re.captures(&html) {
                 let video_url = caps[1].to_string();
-                let title = og_title_re.captures(&html).map(|c| c[1].to_string()).unwrap_or_else(|| "download".to_string());
+                let title = og_title_re
+                    .captures(&html)
+                    .map(|c| c[1].to_string())
+                    .unwrap_or_else(|| "download".to_string());
                 return Ok(crate::models::ResolveResponse {
                     url: video_url,
                     filename: Some(format!("{}.mp4", title.replace(" ", "-"))),
@@ -793,29 +946,48 @@ impl DownloadManager {
 
             // B. Universal JSON Script Extraction (Next.js, Nuxt, etc.)
             let json_re = Regex::new(r#"<script[^>]*type="application/json"[^>]*>(.*?)</script>|<script id="__NEXT_DATA__"[^>]*>(.*?)</script>"#).unwrap();
-            let video_link_re = Regex::new(r#"https?://[^\s"\'<>]+?\.(?:mp4|mkv|webm|mov)(?:[^\s"\'<>]*?)"#).unwrap();
-            
+            let video_link_re =
+                Regex::new(r#"https?://[^\s"\'<>]+?\.(?:mp4|mkv|webm|mov)(?:[^\s"\'<>]*?)"#)
+                    .unwrap();
+
             let mut best_json_link: Option<(String, String)> = None;
             for caps in json_re.captures_iter(&html) {
-                let json_content = caps.get(1).or(caps.get(2)).map(|m| m.as_str()).unwrap_or("");
+                let json_content = caps
+                    .get(1)
+                    .or(caps.get(2))
+                    .map(|m| m.as_str())
+                    .unwrap_or("");
                 if let Ok(data) = serde_json::from_str::<Value>(json_content) {
                     // Heuristic: Search for video links within the JSON structure
                     let json_str = data.to_string();
-                    let mut found_links: Vec<String> = video_link_re.find_iter(&json_str).map(|m| m.as_str().to_string()).collect();
+                    let mut found_links: Vec<String> = video_link_re
+                        .find_iter(&json_str)
+                        .map(|m| m.as_str().to_string())
+                        .collect();
                     if !found_links.is_empty() {
                         // Prioritize links that look like they belong to CDNs or are higher quality
                         found_links.sort_by_key(|a| a.len());
                         if let Some(link) = found_links.last() {
                             best_json_link = Some((link.clone(), "download".to_string()));
-                            break; 
+                            break;
                         }
                     }
                 }
             }
             if let Some((link, _)) = best_json_link {
                 // Try to find a title in the HTML as well
-                let title = og_title_re.captures(&html).map(|c| c[1].to_string()).unwrap_or_else(|| "download".to_string());
-                let ext = link.split('?').next().unwrap_or("").split('.').last().unwrap_or("mp4").to_string();
+                let title = og_title_re
+                    .captures(&html)
+                    .map(|c| c[1].to_string())
+                    .unwrap_or_else(|| "download".to_string());
+                let ext = link
+                    .split('?')
+                    .next()
+                    .unwrap_or("")
+                    .split('.')
+                    .last()
+                    .unwrap_or("mp4")
+                    .to_string();
                 return Ok(crate::models::ResolveResponse {
                     url: link,
                     filename: Some(format!("{}.{}", title.replace(" ", "-"), ext)),
@@ -826,11 +998,20 @@ impl DownloadManager {
             }
 
             // C. Heuristic Regex Search in Full HTML
-            let mut links: Vec<String> = video_link_re.find_iter(&html).map(|m| m.as_str().to_string()).collect();
+            let mut links: Vec<String> = video_link_re
+                .find_iter(&html)
+                .map(|m| m.as_str().to_string())
+                .collect();
             if !links.is_empty() {
                 links.sort_by_key(|a| a.len());
                 let best_link = links.last().unwrap();
-                let name = best_link.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin");
+                let name = best_link
+                    .split('/')
+                    .last()
+                    .unwrap_or("download.bin")
+                    .split('?')
+                    .next()
+                    .unwrap_or("download.bin");
                 return Ok(crate::models::ResolveResponse {
                     url: best_link.to_string(),
                     filename: Some(name.to_string()),
@@ -842,12 +1023,23 @@ impl DownloadManager {
         }
 
         // Final fallback: use the final redirect URL
-        let filename = final_url.split('/').last().unwrap_or("download.bin").split('?').next().unwrap_or("download.bin").to_string();
+        let filename = final_url
+            .split('/')
+            .last()
+            .unwrap_or("download.bin")
+            .split('?')
+            .next()
+            .unwrap_or("download.bin")
+            .to_string();
         Ok(crate::models::ResolveResponse {
             url: final_url,
             filename: Some(filename),
             total_size: None, // We could try to get it from headers if we haven't already
-            file_type: if content_type.is_empty() { None } else { Some(content_type.to_string()) },
+            file_type: if content_type.is_empty() {
+                None
+            } else {
+                Some(content_type.to_string())
+            },
             is_resumable: None,
         })
     }

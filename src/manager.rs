@@ -54,7 +54,7 @@ impl DownloadManager {
 
     fn get_session_path(&self) -> std::path::PathBuf {
         let home = std::env::var("HOME")
-            .map(|h| std::path::PathBuf::from(h))
+            .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| std::env::temp_dir());
         let dir = home.join(".pincer");
         let _ = std::fs::create_dir_all(&dir);
@@ -315,6 +315,7 @@ impl DownloadManager {
     /// 1. Resolves a unique filename to prevent overwriting.
     /// 2. Initializes the `TaskStatus` and broadcasts `pin.onDownloadStart`.
     /// 3. Spawns the `DownloadTask` engine in the background and tracks its chunked progress.
+    #[allow(clippy::too_many_arguments)]
     pub async fn spawn_task(
         self: &Arc<Self>,
         id: String,
@@ -900,7 +901,7 @@ impl DownloadManager {
                 .unwrap_or_else(|| {
                     final_url
                         .split('/')
-                        .last()
+                        .next_back()
                         .unwrap_or("download.bin")
                         .split('?')
                         .next()
@@ -985,7 +986,7 @@ impl DownloadManager {
                     .next()
                     .unwrap_or("")
                     .split('.')
-                    .last()
+                    .next_back()
                     .unwrap_or("mp4")
                     .to_string();
                 return Ok(crate::models::ResolveResponse {
@@ -1007,7 +1008,7 @@ impl DownloadManager {
                 let best_link = links.last().unwrap();
                 let name = best_link
                     .split('/')
-                    .last()
+                    .next_back()
                     .unwrap_or("download.bin")
                     .split('?')
                     .next()
@@ -1025,7 +1026,7 @@ impl DownloadManager {
         // Final fallback: use the final redirect URL
         let filename = final_url
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("download.bin")
             .split('?')
             .next()

@@ -99,7 +99,7 @@ impl DownloadTask {
             full_range
                 .to_str()
                 .ok()
-                .and_then(|s| s.split('/').last())
+                .and_then(|s| s.split('/').next_back())
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(0)
         } else {
@@ -142,6 +142,7 @@ impl DownloadTask {
         let file = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path)
             .map_err(|e| format!("Failed to open file: {}", e))?;
 
@@ -160,11 +161,7 @@ impl DownloadTask {
         // Phase C & D: Chunking and Spawning
         // When resuming, we still want to use multi-threading for the REMAINING part.
         // Simplified approach: Divide the REMAINING bytes among threads.
-        let remaining_size = if self.resume_offset < content_length {
-            content_length - self.resume_offset
-        } else {
-            0
-        };
+        let remaining_size = content_length.saturating_sub(self.resume_offset);
 
         if remaining_size == 0 && self.resume_offset > 0 {
             let file_type = res

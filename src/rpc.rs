@@ -116,7 +116,7 @@ async fn handle_method(
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
                         // Format: ["gid"]
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(gid) = gid {
@@ -145,7 +145,7 @@ async fn handle_method(
                     {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(gid) = gid {
@@ -174,7 +174,7 @@ async fn handle_method(
                     {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(gid) = gid {
@@ -203,7 +203,7 @@ async fn handle_method(
                     {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(gid) = gid {
@@ -228,7 +228,7 @@ async fn handle_method(
                     {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(gid) = gid {
@@ -253,7 +253,7 @@ async fn handle_method(
                     {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(gid) = gid {
@@ -303,7 +303,7 @@ async fn handle_method(
                                     .map(|s| s.to_string())
                                     .unwrap_or_else(|| {
                                         url.split('/')
-                                            .last()
+                                            .next_back()
                                             .unwrap_or("download.bin")
                                             .split('?')
                                             .next()
@@ -355,7 +355,7 @@ async fn handle_method(
                     {
                         params_array.get(1)
                     } else {
-                        params_array.get(0)
+                        params_array.first()
                     };
 
                     if let Some(options_obj) = options_val.and_then(|v| v.as_object()) {
@@ -394,7 +394,7 @@ async fn handle_method(
                         )
                     } else {
                         (
-                            params_array.get(0).and_then(|v| v.as_str()),
+                            params_array.first().and_then(|v| v.as_str()),
                             params_array.get(1),
                         )
                     };
@@ -429,7 +429,7 @@ async fn handle_method(
                     {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(gid) = gid {
@@ -458,7 +458,7 @@ async fn handle_method(
                     {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(gid) = gid {
@@ -483,7 +483,7 @@ async fn handle_method(
                     {
                         params_array.get(1).and_then(|v| v.as_str())
                     } else {
-                        params_array.get(0).and_then(|v| v.as_str())
+                        params_array.first().and_then(|v| v.as_str())
                     };
 
                     if let Some(url) = url {

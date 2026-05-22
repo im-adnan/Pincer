@@ -105,9 +105,7 @@ impl DownloadWorker {
                 // Divide work budget among active threads
                 let per_thread_limit = global_limit / thread_count;
 
-                if per_thread_limit > 0 {
-                    // target_duration (ms) = (bytes * 1000) / per_thread_limit
-                    let target_ms = (chunk_len * 1000) / per_thread_limit;
+                if let Some(target_ms) = (chunk_len * 1000).checked_div(per_thread_limit) {
                     let actual_ms = download_duration.as_millis() as u64;
 
                     if target_ms > actual_ms {

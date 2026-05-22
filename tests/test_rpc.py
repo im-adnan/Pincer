@@ -4,6 +4,9 @@ import json
 import asyncio
 import os
 
+TEST_URL_1 = "https://images.unsplash.com/photo-1777047023536-8e47688b77f9?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=nasa-JZz2UYtHo1s-unsplash.jpg"
+TEST_URL_2 = "https://images.unsplash.com/photo-1614730321146-b6fa6a46bcb4?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=nasa-vhSz50AaFAs-unsplash.jpg"
+
 class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
     URI = "ws://127.0.0.1:6842/jsonrpc"
 
@@ -42,7 +45,7 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
     async def test_03_lifecycle(self):
         # addUri
         res = await self.rpc_call("pin.addUri", [
-            ["https://example.com/dummy.zip"],
+            [TEST_URL_1],
             {"dir": "./", "out": "dummy_test.zip", "split": "1"}
         ])
         gid = res.get("result")
@@ -99,7 +102,7 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.get("result"), "OK", f"Error purgeDownloadResult: {res}")
 
         add_res = await self.rpc_call("pin.addUri", [
-            ["https://example.com/dummy.zip"],
+            [TEST_URL_2],
             {"dir": "./", "out": "dummy.zip"}
         ])
         gid = add_res.get("result")

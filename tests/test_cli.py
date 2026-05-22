@@ -2,6 +2,8 @@ import unittest
 import subprocess
 import os
 
+TEST_URL = "https://images.unsplash.com/photo-1446941303752-a64bb1048d54?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=nasa-U2uKrI4lci8-unsplash.jpg"
+
 class TestPincerCLI(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -27,7 +29,7 @@ class TestPincerCLI(unittest.TestCase):
             
         result = subprocess.run([
             self.binary, 
-            "https://example.com/dummy.zip",
+            TEST_URL,
             "--out", test_out,
             "--split", "2"
         ], capture_output=True, text=True)

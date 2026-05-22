@@ -30,7 +30,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
 3. Run the standalone CLI to test direct downloads:
    ```bash
-   cargo run -- "https://example.com/dummy.zip" -s 8 -d ./
+   TEST_URL="https://images.unsplash.com/photo-1446941303752-a64bb1048d54?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=nasa-U2uKrI4lci8-unsplash.jpg"
+   cargo run -- "$TEST_URL" -s 8 -d ./
    ```
 4. Run in RPC server mode (defaults to port `6842` over WebSocket):
    ```bash

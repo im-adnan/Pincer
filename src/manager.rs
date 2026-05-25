@@ -869,45 +869,47 @@ impl DownloadManager {
             .unwrap_or("")
             .to_string();
 
+        let total_size = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.parse::<i64>().ok());
+
+        let is_resumable = response
+            .headers()
+            .get(reqwest::header::ACCEPT_RANGES)
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s == "bytes");
+
+        let content_disposition_filename = response
+            .headers()
+            .get(reqwest::header::CONTENT_DISPOSITION)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| {
+                if let Some(idx) = s.find("filename=") {
+                    let part = &s[idx + 9..];
+                    let name = part.split(';').next().unwrap_or(part).trim().trim_matches('"');
+                    Some(name.to_string())
+                } else {
+                    None
+                }
+            });
+
         // If the result is already a direct video file, return it
         if content_type.contains("video/")
             || final_url.split('?').next().unwrap_or("").ends_with(".mp4")
             || final_url.split('?').next().unwrap_or("").ends_with(".mkv")
         {
-            let total_size = response
-                .headers()
-                .get(reqwest::header::CONTENT_LENGTH)
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| s.parse::<i64>().ok());
-
-            let is_resumable = response
-                .headers()
-                .get(reqwest::header::ACCEPT_RANGES)
-                .and_then(|h| h.to_str().ok())
-                .map(|s| s == "bytes");
-            let filename = response
-                .headers()
-                .get(reqwest::header::CONTENT_DISPOSITION)
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| {
-                    if let Some(idx) = s.find("filename=") {
-                        let part = &s[idx + 9..];
-                        let name = part.trim_matches('"');
-                        Some(name.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or_else(|| {
-                    final_url
-                        .split('/')
-                        .next_back()
-                        .unwrap_or("download.bin")
-                        .split('?')
-                        .next()
-                        .unwrap_or("download.bin")
-                        .to_string()
-                });
+            let filename = content_disposition_filename.unwrap_or_else(|| {
+                final_url
+                    .split('/')
+                    .next_back()
+                    .unwrap_or("download.bin")
+                    .split('?')
+                    .next()
+                    .unwrap_or("download.bin")
+                    .to_string()
+            });
 
             return Ok(crate::models::ResolveResponse {
                 url: final_url,
@@ -1024,24 +1026,52 @@ impl DownloadManager {
         }
 
         // Final fallback: use the final redirect URL
-        let filename = final_url
-            .split('/')
-            .next_back()
-            .unwrap_or("download.bin")
-            .split('?')
-            .next()
-            .unwrap_or("download.bin")
-            .to_string();
+        let mut filename = content_disposition_filename.unwrap_or_else(|| {
+            final_url
+                .split('/')
+                .next_back()
+                .unwrap_or("download.bin")
+                .split('?')
+                .next()
+                .unwrap_or("download.bin")
+                .to_string()
+        });
+
+        if !filename.contains('.') {
+            let ext = match content_type.as_str() {
+                "image/jpeg" => "jpg",
+                "image/png" => "png",
+                "image/gif" => "gif",
+                "image/webp" => "webp",
+                "application/pdf" => "pdf",
+                "application/zip" => "zip",
+                "application/x-gzip" => "gz",
+                "application/x-tar" => "tar",
+                "text/plain" => "txt",
+                "text/html" => "html",
+                "audio/mpeg" => "mp3",
+                "audio/wav" => "wav",
+                "audio/ogg" => "ogg",
+                "video/mp4" => "mp4",
+                "video/x-matroska" => "mkv",
+                "video/webm" => "webm",
+                _ => "",
+            };
+            if !ext.is_empty() {
+                filename = format!("{}.{}", filename, ext);
+            }
+        }
+
         Ok(crate::models::ResolveResponse {
             url: final_url,
             filename: Some(filename),
-            total_size: None, // We could try to get it from headers if we haven't already
+            total_size,
             file_type: if content_type.is_empty() {
                 None
             } else {
                 Some(content_type.to_string())
             },
-            is_resumable: None,
+            is_resumable,
         })
     }
 }

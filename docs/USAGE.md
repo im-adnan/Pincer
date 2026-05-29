@@ -29,6 +29,7 @@ This will download the file to the current directory using multiple threads by d
 | `-s` | `--split` | Number of concurrent threads/connections (1-99). | `1` |
 | `-d` | `--dir` | Target directory for the download. | Current Dir |
 | `-o` | `--out` | Custom output filename. | From URL |
+| `-f` | `--format`| Target format to convert the downloaded file to. | N/A |
 | `-l` | `--log` | Enable detailed logging. | `false` |
 | `-h` | `--help` | Print help information. | N/A |
 
@@ -217,6 +218,13 @@ Pincer features a powerful URL resolution engine that handles more than just sim
 - **Metadata Extraction**: Extracts filenames from `Content-Disposition` headers.
 - **Platform Scraping**: Automatically identifies and extracts high-quality video links from platforms like **Pexels** by parsing `NEXT_DATA` or meta tags.
 - **Resumability Check**: Verifies if the server supports range requests before starting.
+
+#### Real-Time File Format Conversion
+Pincer features an integrated format conversion engine that triggers automatically upon download completion if a different file format is requested.
+- **Image Conversion**: Utilizes macOS `sips` for standard image transcoding between formats like `png`, `jpg`/`jpeg`, `webp`, `heic`/`heif`.
+  - **PDF Support**: Utilizes `sips` with a automatic built-in fallback to macOS's native `cupsfilter` utility for extremely reliable PDF generation.
+- **Audio/Video Conversion**: Uses `ffmpeg` (if globally installed) or falls back to macOS's native `afconvert` utility for audio (`mp3`, `wav`, `m4a`, `aac`).
+- **Converting Status**: During the transcoding phase, the task's state changes to `"converting"` before final completion.
 
 #### Global Speed Modes
 The `speed-mode` option in `pin.changeGlobalOption` allows for high-level bandwidth control:

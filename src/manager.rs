@@ -72,7 +72,7 @@ impl DownloadManager {
             let status = &control.status;
             // If the task was active or waiting, save it as paused so it does not auto-resume on startup
             let saved_status = match status.status.as_str() {
-                "active" | "waiting" => "paused".to_string(),
+                "active" | "converting" | "waiting" => "paused".to_string(),
                 s => s.to_string(),
             };
 
@@ -424,11 +424,41 @@ impl DownloadManager {
                                         .build_notification("pin.onDownloadPause", &id_clone),
                                 );
                             } else {
-                                control.status.status = "complete".to_string();
-                                let _ = manager_clone.tx.send(
+                                // Extract file path, URL and file type for conversion
+                                let file_path = control
+                                    .status
+                                    .files
+                                    .first()
+                                    .map(|f| f.path.clone())
+                                    .unwrap_or_default();
+                                let url = control
+                                    .status
+                                    .files
+                                    .first()
+                                    .and_then(|f| f.uris.first().map(|u| u.uri.clone()))
+                                    .unwrap_or_default();
+                                let ft = control.status.file_type.clone();
+
+                                // Drop the lock temporarily so we don't hold the RwLock write-lock while running slow processes like sips/ffmpeg
+                                drop(locks);
+
+                                // Perform conversion
+                                if !file_path.is_empty() && !url.is_empty() {
                                     manager_clone
-                                        .build_notification("pin.onDownloadComplete", &id_clone),
-                                );
+                                        .perform_format_conversion(&file_path, &url, ft.as_deref())
+                                        .await;
+                                }
+
+                                // Re-acquire the write lock to set the status
+                                let mut locks = manager_clone.tasks.write().await;
+                                if let Some(control) = locks.get_mut(&id_clone) {
+                                    control.status.status = "complete".to_string();
+                                    let _ =
+                                        manager_clone.tx.send(manager_clone.build_notification(
+                                            "pin.onDownloadComplete",
+                                            &id_clone,
+                                        ));
+                                }
                             }
                         }
                     }
@@ -476,7 +506,10 @@ impl DownloadManager {
         {
             let mut tasks = self.tasks.write().await;
             for (gid, control) in tasks.iter_mut() {
-                if control.status.status == "active" || control.status.status == "waiting" {
+                if control.status.status == "active"
+                    || control.status.status == "converting"
+                    || control.status.status == "waiting"
+                {
                     control.token.cancel();
                     control.status.status = "paused".to_string();
                     let _ = self
@@ -494,7 +527,9 @@ impl DownloadManager {
             if let Some(control) = tasks.get(id) {
                 // If it's already active, don't start it again
                 // Unless its token was cancelled (meaning it's in the process of stopping)
-                if control.status.status == "active" && !control.token.is_cancelled() {
+                if (control.status.status == "active" || control.status.status == "converting")
+                    && !control.token.is_cancelled()
+                {
                     return false;
                 }
                 if control.status.status == "complete" {
@@ -638,7 +673,7 @@ impl DownloadManager {
         let tasks = self.tasks.read().await;
         tasks
             .values()
-            .filter(|c| c.status.status == "active")
+            .filter(|c| c.status.status == "active" || c.status.status == "converting")
             .map(|c| {
                 let mut status = c.status.clone();
                 status.download_speed = self.calculate_current_speed(c).to_string();
@@ -678,7 +713,7 @@ impl DownloadManager {
 
         for control in tasks.values() {
             match control.status.status.as_str() {
-                "active" => {
+                "active" | "converting" => {
                     active += 1;
                     total_download_speed += self.calculate_current_speed(control);
                 }
@@ -817,7 +852,7 @@ impl DownloadManager {
     }
 
     fn calculate_current_speed(&self, control: &TaskControl) -> u64 {
-        if control.status.status != "active" {
+        if control.status.status != "active" && control.status.status != "converting" {
             return 0;
         }
 
@@ -888,7 +923,12 @@ impl DownloadManager {
             .and_then(|s| {
                 if let Some(idx) = s.find("filename=") {
                     let part = &s[idx + 9..];
-                    let name = part.split(';').next().unwrap_or(part).trim().trim_matches('"');
+                    let name = part
+                        .split(';')
+                        .next()
+                        .unwrap_or(part)
+                        .trim()
+                        .trim_matches('"');
                     Some(name.to_string())
                 } else {
                     None
@@ -1074,4 +1114,248 @@ impl DownloadManager {
             is_resumable,
         })
     }
+
+    pub async fn perform_format_conversion(
+        &self,
+        file_path_str: &str,
+        url: &str,
+        file_type: Option<&str>,
+    ) {
+        let path = std::path::Path::new(file_path_str);
+        if !path.exists() {
+            return;
+        }
+
+        let target_ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase())
+            .unwrap_or_default();
+
+        if target_ext.is_empty() {
+            return;
+        }
+
+        // Try to find the source extension from URL
+        let mut src_ext = std::path::Path::new(url)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase())
+            .unwrap_or_default();
+
+        // If not found or empty, try from content type
+        if src_ext.is_empty() {
+            if let Some(ct) = file_type {
+                src_ext = match ct {
+                    "image/jpeg" | "image/jpg" => "jpg".to_string(),
+                    "image/png" => "png".to_string(),
+                    "image/gif" => "gif".to_string(),
+                    "image/webp" => "webp".to_string(),
+                    "image/heic" => "heic".to_string(),
+                    "image/heif" => "heif".to_string(),
+                    "audio/mpeg" | "audio/mp3" => "mp3".to_string(),
+                    "audio/wav" | "audio/x-wav" => "wav".to_string(),
+                    "audio/x-m4a" | "audio/m4a" | "audio/x-aac" => "m4a".to_string(),
+                    "audio/flac" | "audio/x-flac" => "flac".to_string(),
+                    "video/mp4" => "mp4".to_string(),
+                    "video/x-matroska" | "video/mkv" => "mkv".to_string(),
+                    "video/quicktime" => "mov".to_string(),
+                    "video/webm" => "webm".to_string(),
+                    _ => "".to_string(),
+                };
+            }
+        }
+
+        if src_ext.is_empty() || src_ext == target_ext {
+            // No conversion needed
+            return;
+        }
+
+        println!(
+            "[CONVERTER] Attempting conversion from {} to {}",
+            src_ext, target_ext
+        );
+
+        let temp_path_str = format!("{}.src.{}", file_path_str, src_ext);
+        let temp_path = std::path::Path::new(&temp_path_str);
+
+        // Rename the downloaded file to a temp file containing the raw source bytes
+        if let Err(e) = std::fs::rename(path, temp_path) {
+            eprintln!(
+                "[CONVERTER ERROR] Failed to rename original file to temp path: {}",
+                e
+            );
+            return;
+        }
+
+        let mut success = false;
+        let images = ["jpg", "jpeg", "png", "webp", "heic", "heif", "pdf"];
+
+        // 2. Image conversion using macOS `sips`
+        if !success && images.contains(&src_ext.as_str()) && images.contains(&target_ext.as_str()) {
+            let sips_format = match target_ext.as_str() {
+                "jpg" | "jpeg" => "jpeg",
+                other => other,
+            };
+
+            println!(
+                "[CONVERTER] Running: sips -s format {} {:?} --out {:?}",
+                sips_format, temp_path, path
+            );
+            match tokio::process::Command::new("sips")
+                .arg("-s")
+                .arg("format")
+                .arg(sips_format)
+                .arg(temp_path)
+                .arg("--out")
+                .arg(path)
+                .output()
+                .await
+            {
+                Ok(output) => {
+                    if output.status.success() {
+                        success = true;
+                        println!("[CONVERTER] sips conversion succeeded!");
+                    } else {
+                        eprintln!(
+                            "[CONVERTER ERROR] sips failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[CONVERTER ERROR] Failed to execute sips: {}", e);
+                }
+            }
+        }
+
+        // 3. Fallback PDF conversion using macOS `cupsfilter`
+        if !success && target_ext == "pdf" && images.contains(&src_ext.as_str()) {
+            let mime = match src_ext.to_lowercase().as_str() {
+                "png" => "image/png",
+                "jpg" | "jpeg" => "image/jpeg",
+                "gif" => "image/gif",
+                "webp" => "image/webp",
+                _ => "image/png",
+            };
+            println!(
+                "[CONVERTER] Running cupsfilter fallback for PDF conversion: cupsfilter -i {} -m application/pdf {:?}",
+                mime, temp_path
+            );
+            if let Ok(file) = std::fs::File::create(path) {
+                match tokio::process::Command::new("cupsfilter")
+                    .arg("-i")
+                    .arg(mime)
+                    .arg("-m")
+                    .arg("application/pdf")
+                    .arg(temp_path)
+                    .stdout(std::process::Stdio::from(file))
+                    .output()
+                    .await
+                {
+                    Ok(output) => {
+                        if output.status.success() {
+                            success = true;
+                            println!("[CONVERTER] cupsfilter PDF conversion succeeded!");
+                        } else {
+                            eprintln!(
+                                "[CONVERTER ERROR] cupsfilter failed: {}",
+                                String::from_utf8_lossy(&output.stderr)
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[CONVERTER ERROR] cupsfilter command failed: {}", e);
+                    }
+                }
+            }
+        }
+
+        // 2. Audio/Video conversion using ffmpeg (if available)
+        if !success {
+            println!(
+                "[CONVERTER] Running: ffmpeg -y -i {:?} {:?}",
+                temp_path, path
+            );
+            match tokio::process::Command::new("ffmpeg")
+                .arg("-y")
+                .arg("-i")
+                .arg(temp_path)
+                .arg(path)
+                .output()
+                .await
+            {
+                Ok(output) => {
+                    if output.status.success() {
+                        success = true;
+                        println!("[CONVERTER] ffmpeg conversion succeeded!");
+                    } else {
+                        eprintln!(
+                            "[CONVERTER ERROR] ffmpeg failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        );
+                    }
+                }
+                Err(e) => {
+                    println!("[CONVERTER] ffmpeg not available: {}", e);
+                }
+            }
+        }
+
+        // 3. Audio fallback using macOS `afconvert`
+        let audio_formats = ["mp3", "wav", "m4a", "aac", "flac"];
+        if !success
+            && audio_formats.contains(&src_ext.as_str())
+            && audio_formats.contains(&target_ext.as_str())
+        {
+            let (af_format, af_data) = match target_ext.as_str() {
+                "mp3" => ("mpg3", "wha?"),
+                "m4a" | "aac" => ("m4af", "aac "),
+                "wav" => ("WAVE", "LEI16"),
+                _ => ("", ""),
+            };
+
+            if !af_format.is_empty() {
+                println!(
+                    "[CONVERTER] Running: afconvert -f {} -d {:?} {:?} {:?}",
+                    af_format, af_data, temp_path, path
+                );
+                let mut cmd = tokio::process::Command::new("afconvert");
+                cmd.arg("-f").arg(af_format);
+                if af_data != "wha?" {
+                    cmd.arg("-d").arg(af_data);
+                }
+                cmd.arg(temp_path).arg(path);
+
+                match cmd.output().await {
+                    Ok(output) => {
+                        if output.status.success() {
+                            success = true;
+                            println!("[CONVERTER] afconvert conversion succeeded!");
+                        } else {
+                            eprintln!(
+                                "[CONVERTER ERROR] afconvert failed: {}",
+                                String::from_utf8_lossy(&output.stderr)
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[CONVERTER ERROR] Failed to execute afconvert: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Clean up or fallback
+        if success {
+            let _ = std::fs::remove_file(temp_path);
+            println!("[CONVERTER] Cleaned up temporary file: {:?}", temp_path);
+        } else {
+            // Restore original file so no data is lost
+            let _ = std::fs::rename(temp_path, path);
+            eprintln!("[CONVERTER] Conversion failed or unsupported. Restored original file.");
+        }
+    }
+
+
 }

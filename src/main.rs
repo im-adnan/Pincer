@@ -25,6 +25,7 @@ async fn main() -> Result<(), lexopt::Error> {
         .unwrap()
         .to_string();
     let mut out = None;
+    let mut format = None;
     let mut log = false;
 
     let mut parser = lexopt::Parser::from_env();
@@ -38,6 +39,9 @@ async fn main() -> Result<(), lexopt::Error> {
             }
             lexopt::Arg::Short('o') | lexopt::Arg::Long("out") => {
                 out = Some(parser.value()?.string()?);
+            }
+            lexopt::Arg::Short('f') | lexopt::Arg::Long("format") => {
+                format = Some(parser.value()?.string()?);
             }
             lexopt::Arg::Short('l') | lexopt::Arg::Long("log") => {
                 log = true;
@@ -55,6 +59,7 @@ async fn main() -> Result<(), lexopt::Error> {
                 );
                 println!("  -d, --dir <DIR>     Target directory (Default: current)");
                 println!("  -o, --out <FILE>    Custom output filename");
+                println!("  -f, --format <FMT>  Target format to convert the downloaded file to");
                 println!("  -l, --log           Enable detailed logging");
                 println!("  -v, --version       Print version information");
                 println!("  -h, --help          Print help information");
@@ -120,9 +125,9 @@ async fn main() -> Result<(), lexopt::Error> {
         }
 
         let task = crate::task::DownloadTask {
-            url: final_url,
+            url: final_url.clone(),
             filename: filename.clone(),
-            save_path: dir,
+            save_path: dir.clone(),
             threads: split,
             resume_offset: 0,
             headers: vec![],
@@ -202,6 +207,42 @@ async fn main() -> Result<(), lexopt::Error> {
 
                 let total_elapsed = start_time.elapsed();
                 println!("\n\n\n  \x1b[1;32m✔ Download Complete!\x1b[0m \x1b[90m(Total Time: {})\x1b[0m\n", format_duration(total_elapsed.as_secs()));
+
+                // Perform format conversion if requested in CLI options
+                if let Some(target_fmt) = format {
+                    let file_path = format!("{}/{}", dir, filename);
+                    let target_filename = if let Some(dot_idx) = filename.rfind('.') {
+                        format!("{}.{}", &filename[..dot_idx], target_fmt)
+                    } else {
+                        format!("{}.{}", filename, target_fmt)
+                    };
+                    let target_file_path = format!("{}/{}", dir, target_filename);
+
+                    if file_path != target_file_path {
+                        println!(
+                            "  \x1b[34m[INFO]\x1b[0m Preparing conversion to format: {}...",
+                            target_fmt
+                        );
+                        if let Err(e) = std::fs::rename(&file_path, &target_file_path) {
+                            eprintln!(
+                                "  \x1b[31m[ERROR]\x1b[0m Failed to prepare conversion: {}",
+                                e
+                            );
+                        } else {
+                            println!("  \x1b[34m[INFO]\x1b[0m Transcoding file now...");
+                            manager
+                                .perform_format_conversion(
+                                    &target_file_path,
+                                    &final_url,
+                                    Some(&file_type),
+                                )
+                                .await;
+                            println!(
+                                "  \x1b[32m[SUCCESS]\x1b[0m Conversion completed successfully!"
+                            );
+                        }
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("\n  \x1b[31m✖ Download Failed: {}\x1b[0m", e);

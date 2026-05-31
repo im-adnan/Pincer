@@ -116,6 +116,8 @@ impl DownloadManager {
                 status: saved_status,
                 total_length: status.total_length.parse::<u64>().unwrap_or(0),
                 completed_length: status.completed_length.parse::<u64>().unwrap_or(0),
+                worker_progress: status.worker_progress.clone(),
+                chunk_size: 0,
             });
         }
 
@@ -179,7 +181,7 @@ impl DownloadManager {
                         total_length: task.total_length.to_string(),
                         completed_length: task.completed_length.to_string(),
                         download_speed: "0".to_string(),
-                        worker_progress: vec![0; task.threads],
+                        worker_progress: task.worker_progress.clone(),
                         file_type: None,
                         is_resumable: Some(true),
                         files: vec![FileData {
@@ -337,7 +339,7 @@ impl DownloadManager {
 
         // 1. Register the task initially as "active"
         // (or update existing one if it's a resume)
-        let initial_status = TaskStatus {
+        let mut initial_status = TaskStatus {
             gid: id.clone(),
             status: "active".to_string(),
             total_length: "0".to_string(), // Will be updated by task.start
@@ -352,6 +354,26 @@ impl DownloadManager {
             }],
             dir: dir.clone(),
         };
+
+        let mut existing_worker_progress = vec![0; threads];
+        {
+            let tasks = self.tasks.read().await;
+            if let Some(existing) = tasks.get(&id) {
+                initial_status.total_length = existing.status.total_length.clone();
+                initial_status.file_type = existing.status.file_type.clone();
+                initial_status.is_resumable = existing.status.is_resumable;
+
+                let mut wp = existing.status.worker_progress.clone();
+                if wp.len() == threads {
+                    initial_status.worker_progress = wp.clone();
+                    existing_worker_progress = wp;
+                } else {
+                    wp.resize(threads, 0);
+                    initial_status.worker_progress = wp.clone();
+                    existing_worker_progress = wp;
+                }
+            }
+        }
 
         {
             let mut tasks = self.tasks.write().await;
@@ -390,7 +412,7 @@ impl DownloadManager {
                 filename,
                 save_path: dir,
                 threads,
-                resume_offset,
+                worker_progress: existing_worker_progress,
                 headers: headers.clone(),
                 global_limit: manager_clone.current_limit.clone(),
                 active_threads: manager_clone.active_threads.clone(),
@@ -424,40 +446,51 @@ impl DownloadManager {
                                         .build_notification("pin.onDownloadPause", &id_clone),
                                 );
                             } else {
-                                // Extract file path, URL and file type for conversion
-                                let file_path = control
-                                    .status
-                                    .files
-                                    .first()
-                                    .map(|f| f.path.clone())
-                                    .unwrap_or_default();
-                                let url = control
-                                    .status
-                                    .files
-                                    .first()
-                                    .and_then(|f| f.uris.first().map(|u| u.uri.clone()))
-                                    .unwrap_or_default();
-                                let ft = control.status.file_type.clone();
+                                let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
+                                let total = control.status.total_length.parse::<u64>().unwrap_or(0);
 
-                                // Drop the lock temporarily so we don't hold the RwLock write-lock while running slow processes like sips/ffmpeg
-                                drop(locks);
+                                if total > 0 && completed < total {
+                                    control.status.status = "error".to_string();
+                                    let _ = manager_clone.tx.send(
+                                        manager_clone
+                                            .build_notification("pin.onDownloadError", &id_clone),
+                                    );
+                                } else {
+                                    // Extract file path, URL and file type for conversion
+                                    let file_path = control
+                                        .status
+                                        .files
+                                        .first()
+                                        .map(|f| f.path.clone())
+                                        .unwrap_or_default();
+                                    let url = control
+                                        .status
+                                        .files
+                                        .first()
+                                        .and_then(|f| f.uris.first().map(|u| u.uri.clone()))
+                                        .unwrap_or_default();
+                                    let ft = control.status.file_type.clone();
 
-                                // Perform conversion
-                                if !file_path.is_empty() && !url.is_empty() {
-                                    manager_clone
-                                        .perform_format_conversion(&file_path, &url, ft.as_deref())
-                                        .await;
-                                }
+                                    // Drop the lock temporarily so we don't hold the RwLock write-lock while running slow processes like sips/ffmpeg
+                                    drop(locks);
 
-                                // Re-acquire the write lock to set the status
-                                let mut locks = manager_clone.tasks.write().await;
-                                if let Some(control) = locks.get_mut(&id_clone) {
-                                    control.status.status = "complete".to_string();
-                                    let _ =
-                                        manager_clone.tx.send(manager_clone.build_notification(
-                                            "pin.onDownloadComplete",
-                                            &id_clone,
-                                        ));
+                                    // Perform conversion
+                                    if !file_path.is_empty() && !url.is_empty() {
+                                        manager_clone
+                                            .perform_format_conversion(&file_path, &url, ft.as_deref())
+                                            .await;
+                                    }
+
+                                    // Re-acquire the write lock to set the status
+                                    let mut locks = manager_clone.tasks.write().await;
+                                    if let Some(control) = locks.get_mut(&id_clone) {
+                                        control.status.status = "complete".to_string();
+                                        let _ =
+                                            manager_clone.tx.send(manager_clone.build_notification(
+                                                "pin.onDownloadComplete",
+                                                &id_clone,
+                                            ));
+                                    }
                                 }
                             }
                         }
@@ -1356,6 +1389,4 @@ impl DownloadManager {
             eprintln!("[CONVERTER] Conversion failed or unsupported. Restored original file.");
         }
     }
-
-
 }

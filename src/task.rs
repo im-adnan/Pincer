@@ -17,7 +17,7 @@ pub struct DownloadTask {
     pub filename: String,
     pub save_path: String,
     pub threads: usize,
-    pub resume_offset: u64,
+    pub worker_progress: Vec<u64>,
     pub headers: Vec<String>,
     pub global_limit: Arc<AtomicU64>,
     pub active_threads: Arc<AtomicU64>,
@@ -159,11 +159,9 @@ impl DownloadTask {
         let (progress_tx, progress_rx) = mpsc::channel(100);
 
         // Phase C & D: Chunking and Spawning
-        // When resuming, we still want to use multi-threading for the REMAINING part.
-        // Simplified approach: Divide the REMAINING bytes among threads.
-        let remaining_size = content_length.saturating_sub(self.resume_offset);
-
-        if remaining_size == 0 && self.resume_offset > 0 {
+        // Divide original file into equal chunks, and offset by individual worker progress
+        let total_completed: u64 = self.worker_progress.iter().sum();
+        if total_completed >= content_length && content_length > 0 {
             let file_type = res
                 .headers()
                 .get(reqwest::header::CONTENT_TYPE)
@@ -178,16 +176,29 @@ impl DownloadTask {
             )); // Already done
         }
 
-        let chunk_size = remaining_size / actual_threads as u64;
+        let chunk_size = content_length / actual_threads as u64;
         let mut handles: Vec<JoinHandle<Result<(), String>>> = vec![];
 
         for i in 0..actual_threads {
-            let start = self.resume_offset + (i as u64 * chunk_size);
-            let end = if i == actual_threads - 1 {
-                content_length - 1
+            let original_start = i as u64 * chunk_size;
+            let original_end = if i == actual_threads - 1 {
+                content_length.saturating_sub(1)
             } else {
-                start + chunk_size - 1
+                original_start + chunk_size - 1
             };
+
+            let completed = if supports_ranges {
+                self.worker_progress.get(i).cloned().unwrap_or(0)
+            } else {
+                0
+            };
+
+            let start = original_start + completed;
+            let end = original_end;
+
+            if start > end {
+                continue; // This thread has finished its work
+            }
 
             let worker = DownloadWorker {
                 id: i,

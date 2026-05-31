@@ -129,7 +129,7 @@ async fn main() -> Result<(), lexopt::Error> {
             filename: filename.clone(),
             save_path: dir.clone(),
             threads: split,
-            resume_offset: 0,
+            worker_progress: vec![0; split],
             headers: vec![],
             global_limit: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             active_threads: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)),

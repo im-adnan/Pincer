@@ -222,15 +222,16 @@ impl DownloadManager {
         filename: &str,
         excluding_gid: Option<&str>,
     ) -> String {
+        let sanitized = crate::models::sanitize_filename(filename);
         let tasks = self.tasks.read().await;
-        let mut unique_name = filename.to_string();
+        let mut unique_name = sanitized.clone();
         let mut counter = 1;
 
-        let path = std::path::Path::new(filename);
+        let path = std::path::Path::new(&sanitized);
         let stem = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .unwrap_or(filename);
+            .unwrap_or(&sanitized);
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         while tasks.values().any(|c| {
@@ -446,7 +447,8 @@ impl DownloadManager {
                                         .build_notification("pin.onDownloadPause", &id_clone),
                                 );
                             } else {
-                                let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
+                                let completed =
+                                    control.status.completed_length.parse::<u64>().unwrap_or(0);
                                 let total = control.status.total_length.parse::<u64>().unwrap_or(0);
 
                                 if total > 0 && completed < total {
@@ -477,7 +479,11 @@ impl DownloadManager {
                                     // Perform conversion
                                     if !file_path.is_empty() && !url.is_empty() {
                                         manager_clone
-                                            .perform_format_conversion(&file_path, &url, ft.as_deref())
+                                            .perform_format_conversion(
+                                                &file_path,
+                                                &url,
+                                                ft.as_deref(),
+                                            )
                                             .await;
                                     }
 
@@ -485,11 +491,12 @@ impl DownloadManager {
                                     let mut locks = manager_clone.tasks.write().await;
                                     if let Some(control) = locks.get_mut(&id_clone) {
                                         control.status.status = "complete".to_string();
-                                        let _ =
-                                            manager_clone.tx.send(manager_clone.build_notification(
+                                        let _ = manager_clone.tx.send(
+                                            manager_clone.build_notification(
                                                 "pin.onDownloadComplete",
                                                 &id_clone,
-                                            ));
+                                            ),
+                                        );
                                     }
                                 }
                             }

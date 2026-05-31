@@ -121,6 +121,8 @@ pub struct SessionTask {
     /// Zero means the task is fresh and chunk size should be calculated from total_length.
     #[serde(default)]
     pub chunk_size: u64,
+    #[serde(default)]
+    pub file_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

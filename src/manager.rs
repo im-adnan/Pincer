@@ -326,7 +326,7 @@ impl DownloadManager {
         resume_offset: u64,
         headers: Vec<String>,
     ) {
-        filename = self.generate_unique_filename(&filename, None).await;
+        filename = self.generate_unique_filename(&filename, Some(&id)).await;
         let token = CancellationToken::new();
 
         let completed_length = if resume_offset > 0 {

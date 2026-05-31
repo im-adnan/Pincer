@@ -118,6 +118,7 @@ impl DownloadManager {
                 completed_length: status.completed_length.parse::<u64>().unwrap_or(0),
                 worker_progress: status.worker_progress.clone(),
                 chunk_size: 0,
+                file_type: status.file_type.clone(),
             });
         }
 
@@ -182,7 +183,7 @@ impl DownloadManager {
                         completed_length: task.completed_length.to_string(),
                         download_speed: "0".to_string(),
                         worker_progress: task.worker_progress.clone(),
-                        file_type: None,
+                        file_type: task.file_type.clone(),
                         is_resumable: Some(true),
                         files: vec![FileData {
                             path: format!("{}/{}", task.save_path, task.filename),

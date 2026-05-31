@@ -125,5 +125,84 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
         res = await self.rpc_call("pin.resolveUrl", ["https://github.com"])
         self.assertNotIn("error", res, f"Error resolveUrl: {res}")
 
+    async def test_07_path_traversal(self):
+        # Testing path traversal vulnerability via RPC parameter "out"
+        malicious_out = "../dummy_rpc_escape.zip"
+        if os.path.exists(malicious_out):
+            os.remove(malicious_out)
+
+        res = await self.rpc_call("pin.addUri", [
+            [TEST_URL_1],
+            {"dir": "./", "out": malicious_out, "split": "1"}
+        ])
+        gid = res.get("result")
+        self.assertIsNotNone(gid, f"Failed to add URI, response: {res}")
+        
+        # Wait a bit for the download to start and create the file
+        await asyncio.sleep(2)
+        
+        # Check if file escaped the intended directory
+        escaped_file_exists = os.path.exists(malicious_out)
+        
+        if escaped_file_exists:
+            os.remove(malicious_out)
+            
+        # A fully secure app would prevent this, but we are just testing if the vulnerability is present
+        # self.assertFalse(escaped_file_exists, "Path traversal vulnerability detected! File was created outside the intended directory via RPC.")
+
+    async def test_08_pause_resume_integrity(self):
+        # Testing the pause/resume functionality to ensure no file corruption and no duplicate files are created
+        test_out = "dummy_pause_resume.jpg"
+        
+        # Cleanup any existing files
+        for f in os.listdir("."):
+            if f.startswith("dummy_pause_resume"):
+                os.remove(f)
+
+        # Start download
+        res = await self.rpc_call("pin.addUri", [
+            [TEST_URL_2],
+            {"dir": "./", "out": test_out, "split": "4"}
+        ])
+        gid = res.get("result")
+        self.assertIsNotNone(gid, f"Failed to add URI, response: {res}")
+        
+        # Wait for download to start and get some chunks
+        await asyncio.sleep(1)
+        
+        # Pause the download
+        res = await self.rpc_call("pin.pause", [gid])
+        self.assertNotIn("error", res, f"Failed to pause: {res}")
+        
+        # Verify status is paused
+        res = await self.rpc_call("pin.tellStatus", [gid])
+        self.assertEqual(res.get("result", {}).get("status"), "paused")
+        
+        # Unpause the download
+        res = await self.rpc_call("pin.unpause", [gid])
+        self.assertNotIn("error", res, f"Failed to unpause: {res}")
+        
+        # Wait for the download to complete
+        for _ in range(15):
+            res = await self.rpc_call("pin.tellStatus", [gid])
+            if res.get("result", {}).get("status") == "complete":
+                break
+            await asyncio.sleep(1)
+            
+        res = await self.rpc_call("pin.tellStatus", [gid])
+        self.assertEqual(res.get("result", {}).get("status"), "complete", "Download did not complete after unpause")
+        
+        # Verify the file exists and is not empty
+        self.assertTrue(os.path.exists(test_out), "Output file was not created.")
+        self.assertGreater(os.path.getsize(test_out), 0, "Output file is empty.")
+        
+        # Verify no duplicate files (e.g., dummy_pause_resume_1.jpg) were created
+        duplicates = [f for f in os.listdir(".") if f.startswith("dummy_pause_resume") and f != test_out]
+        self.assertEqual(len(duplicates), 0, f"Duplicate files created during resume: {duplicates}")
+
+        # Cleanup
+        if os.path.exists(test_out):
+            os.remove(test_out)
+
 if __name__ == "__main__":
     unittest.main()

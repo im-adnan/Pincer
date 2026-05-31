@@ -92,11 +92,12 @@ async fn main() -> Result<(), lexopt::Error> {
         };
 
         let final_url = resolved.url;
-        let filename = out.unwrap_or_else(|| {
+        let raw_filename = out.unwrap_or_else(|| {
             resolved
                 .filename
                 .unwrap_or_else(|| "download.bin".to_string())
         });
+        let filename = crate::models::sanitize_filename(&raw_filename);
         let total_size = resolved.total_size.unwrap_or(0) as u64;
         let file_type = resolved.file_type.unwrap_or_else(|| "unknown".to_string());
         let resumable = resolved.is_resumable.unwrap_or(false);

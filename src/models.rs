@@ -128,3 +128,16 @@ pub struct SessionData {
     pub tasks: Vec<SessionTask>,
     pub global_options: std::collections::HashMap<String, String>,
 }
+
+pub fn sanitize_filename(filename: &str) -> String {
+    let raw_name = std::path::Path::new(filename)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("download.bin");
+
+    if raw_name.is_empty() || raw_name == "." || raw_name == ".." {
+        "download.bin".to_string()
+    } else {
+        raw_name.to_string()
+    }
+}

@@ -106,6 +106,7 @@ Pincer is fully documented. Please refer to the following guides based on your n
 
 *   **[JSON-RPC API & Comprehensive Manual](docs/USAGE.md)**: The complete user and developer manual. Contains all CLI arguments, configurations, and WebSocket RPC commands.
 *   **[Contributing Guidelines](docs/CONTRIBUTING.md)**: The onboarding guide for new developers, including rules for pull requests and running tests.
+*   **[Testing Guide](docs/TESTING.md)**: Complete details on running automated test runner, manual CLI/RPC tests, and writing new test cases.
 *   **[Architecture & Future Roadmap](docs/FUTURE.md)**: An internal design document detailing the engine's technical direction, dependency targets, and strategies for maintaining peak speed.
 
 ## Support

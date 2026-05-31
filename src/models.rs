@@ -114,6 +114,13 @@ pub struct SessionTask {
     pub status: String,
     pub total_length: u64,
     pub completed_length: u64,
+    /// Per-worker bytes downloaded within their own chunk. Empty for fresh downloads.
+    #[serde(default)]
+    pub worker_progress: Vec<u64>,
+    /// The original chunk size used when the download was started.
+    /// Zero means the task is fresh and chunk size should be calculated from total_length.
+    #[serde(default)]
+    pub chunk_size: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

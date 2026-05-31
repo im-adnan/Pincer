@@ -34,25 +34,56 @@ This suite tests the direct binary execution (`pincer [URL] [OPTIONS]`) without 
 
 ## How to Run the Tests
 
-To run the test suite, the Pincer server must be running so the Python script can connect to its WebSocket interface.
+The easiest and recommended way to run the entire test suite is using the automated test runner script. If you need to run specific suites individually, you can also execute them manually.
 
-### 1. RPC Tests (`tests/test_rpc.py`)
-To run the RPC tests, the Pincer server must be running.
+### The Automated Test Runner (`tests/run_tests.py`)
 
-Open a terminal and start the Rust backend from the project root:
+Pincer includes an all-in-one test runner script at `tests/run_tests.py`. This script manages the entire lifecycle of CI verification, compilation, execution, and cleanup.
+
+#### What the Runner Does:
+1. **Conflicting Process Check**: Automatically scans for and terminates any pre-existing running Pincer processes to prevent port bind conflicts on `6842`.
+2. **CI Verification Checks**:
+   - Runs `cargo fmt --all -- --check` (attempts to auto-format using `cargo fmt` if check fails).
+   - Runs `cargo check --all-targets` to verify code compiles.
+   - Runs `cargo clippy --all-targets -- -D warnings` to verify zero lint warnings.
+3. **Build Stage**: Builds the debug binary (`cargo build`).
+4. **Session Cleanup**: Removes any stale/leftover session file from `~/.pincer/pincer.session`.
+5. **CLI Tests**: Runs `tests/test_cli.py` to verify direct download functionality.
+6. **Background Server**: Spawns Pincer in the background, waiting for it to spin up and bind the socket.
+7. **RPC Tests**: Runs `tests/test_rpc.py` to test websocket JSON-RPC methods end-to-end.
+8. **Server Shutdown**: Properly terminates the background server.
+9. **Cleanup Prompt**: Asks if you want to clean up temporary test files in `tests/temporary`.
+
+#### How to Run the Runner:
+Ensure you have the `websockets` dependency installed, then execute the script:
 ```bash
-cargo run
-```
-The server should log that it is listening on `ws://0.0.0.0:6842/jsonrpc`.
-
-Open a separate terminal and execute the Python test suite:
-```bash
-# Ensure you have the websockets package installed
+# Ensure dependency is installed
 pip install websockets
 
-# Run the RPC tests
-python3 -m unittest tests/test_rpc.py
+# Run the test suite
+python3 tests/run_tests.py
 ```
+
+---
+
+### Running Tests Manually
+
+If you prefer to run CLI or RPC tests independently, you can follow these steps:
+
+### 1. RPC Tests (`tests/test_rpc.py`)
+To run the RPC tests manually, the Pincer server must be running in a separate process.
+
+1. Open a terminal and start the Rust backend from the project root:
+   ```bash
+   cargo run
+   ```
+   The server should log that it is listening on `ws://0.0.0.0:6842/jsonrpc`.
+
+2. Open a separate terminal and execute the Python test suite:
+   ```bash
+   # Run the RPC tests
+   python3 -m unittest tests/test_rpc.py
+   ```
 
 ### 2. CLI Tests (`tests/test_cli.py`)
 The CLI tests do not require the server to be running. The test script will automatically run `cargo build` to compile the binary and then test the executable directly.

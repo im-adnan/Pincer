@@ -84,6 +84,12 @@ class TestPincerCLI(unittest.TestCase):
         # A fully secure app would prevent this, and we check that the vulnerability is not present
         self.assertFalse(escaped_file_exists, "Path traversal vulnerability detected! File was created outside the intended directory.")
 
+    def test_06_port_help(self):
+        # Verify that --port option is accepted by parser when combined with help
+        result = subprocess.run([self.binary, "--help", "--port", "12345"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("RPC server port", result.stdout)
+
 if __name__ == "__main__":
     unittest.main()
 

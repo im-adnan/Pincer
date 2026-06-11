@@ -77,7 +77,7 @@ To run the RPC tests manually, the Pincer server must be running in a separate p
    ```bash
    cargo run
    ```
-   The server should log that it is listening on `ws://0.0.0.0:6842/jsonrpc`.
+   The server should log that it is listening on `ws://0.0.0.0:6842/jsonrpc` (or another port if started with `--port`).
 
 2. Open a separate terminal and execute the Python test suite:
    ```bash

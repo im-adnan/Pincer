@@ -13,15 +13,24 @@ use tokio::sync::broadcast;
 use crate::manager::DownloadManager;
 use crate::models::{RPCError, RPCRequest, RPCResponse};
 
-/// Starts the background Axum JSON-RPC WebSocket server on port 6842.
-/// This runs infinitely to handle incoming client connections.
-pub async fn start_server(manager: Arc<DownloadManager>, _rx: broadcast::Receiver<String>) {
+pub async fn start_server(
+    manager: Arc<DownloadManager>,
+    _rx: broadcast::Receiver<String>,
+    port: u16,
+) {
     let app = Router::new()
         .route("/jsonrpc", get(ws_handler))
         .layer(Extension(manager));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:6842").await.unwrap();
-    println!("Pincer listening on ws://0.0.0.0:6842/jsonrpc");
+    let addr = format!("0.0.0.0:{}", port);
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("Error: Failed to bind to port {}: {}. The port might already be in use by another instance or service.", port, e);
+            std::process::exit(1);
+        }
+    };
+    println!("Pincer listening on ws://{}/jsonrpc", addr);
 
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("RPC Server Error: {}", e);

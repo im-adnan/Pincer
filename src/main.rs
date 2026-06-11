@@ -27,6 +27,7 @@ async fn main() -> Result<(), lexopt::Error> {
     let mut out = None;
     let mut format = None;
     let mut log = false;
+    let mut port = 6842;
 
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
@@ -46,6 +47,9 @@ async fn main() -> Result<(), lexopt::Error> {
             lexopt::Arg::Short('l') | lexopt::Arg::Long("log") => {
                 log = true;
             }
+            lexopt::Arg::Short('p') | lexopt::Arg::Long("port") => {
+                port = parser.value()?.parse::<u16>()?;
+            }
             lexopt::Arg::Short('v') | lexopt::Arg::Long("version") => {
                 println!("pincer {} ({})", VERSION, BUILD_TYPE);
                 return Ok(());
@@ -61,6 +65,7 @@ async fn main() -> Result<(), lexopt::Error> {
                 println!("  -o, --out <FILE>    Custom output filename");
                 println!("  -f, --format <FMT>  Target format to convert the downloaded file to");
                 println!("  -l, --log           Enable detailed logging");
+                println!("  -p, --port <PORT>   RPC server port (Default: 6842)");
                 println!("  -v, --version       Print version information");
                 println!("  -h, --help          Print help information");
                 return Ok(());
@@ -264,7 +269,7 @@ async fn main() -> Result<(), lexopt::Error> {
     manager.load_session().await;
 
     // Start WebSocket server to listen for RPC
-    rpc::start_server(manager, rx).await;
+    rpc::start_server(manager, rx, port).await;
     Ok(())
 }
 

@@ -31,6 +31,7 @@ This will download the file to the current directory using multiple threads by d
 | `-o` | `--out` | Custom output filename. | From URL |
 | `-f` | `--format`| Target format to convert the downloaded file to. | N/A |
 | `-l` | `--log` | Enable detailed logging. | `false` |
+| `-p` | `--port` | RPC server port. | `6842` |
 | `-h` | `--help` | Print help information. | N/A |
 
 ## Roadmap
@@ -66,8 +67,8 @@ Pincer now includes a built-in persistence layer. All tasks, global options, and
 
 ## 3. Connection & Authentication
 
-- **Default Port**: `6842`
-- **WebSocket URL**: `ws://127.0.0.1:6842/jsonrpc`
+- **Default Port**: `6842` (Configurable via `-p` / `--port` CLI option)
+- **WebSocket URL**: `ws://127.0.0.1:<PORT>/jsonrpc`
 - **Protocol**: JSON-RPC 2.0
 
 Pincer features an integrated RPC layer powered by Axum, which handles incoming WebSocket connections and processes JSON-RPC commands. It implements a robust, proprietary JSON-RPC interface for full engine control.

@@ -88,3 +88,38 @@ As you move from **High-Level** to **Low-Level**, your ability to optimize speed
 *   **Priority 2: Zero Dependencies?** Move everything to the **Level 1/2** column. You will gain a <1MB binary, but you must manually code the "Handshake" and "Retry" logic for every protocol.
 *   **Priority 3: Edge Case Handling?** Stay at **Level 4**. The open-source community has already fixed the bugs you haven't encountered yet (e.g., specific header formats for old Nginx servers).
 
+---
+
+## Aria2 Feature Comparison & Feature Roadmap
+
+As part of our goal to build a modern replacement for `aria2`, here is a breakdown of what we have achieved and what remains.
+
+### Recreated Features (Achieved)
+*   **Command-line interface** (lexopt)
+*   **Download files through HTTP(S)**
+*   **Concurrent Segmented downloading** (up to 99 threads)
+*   **Sequential Resume utilizing HTTP Range headers**
+*   **JSON-RPC (over WebSocket) interface** for real-time status updates
+*   **Session Persistence & Resumption** (`pincer.session` auto-saving)
+*   **Configuration File & Dynamic Options** (`pincer.conf` support, `changeOption`)
+*   **Download / Upload Speed Throttling** (`max-download-limit`, `speed-mode`)
+*   **Basic Advanced HTTP** (Proxy and Auth properties integrated into settings)
+
+### Features Left from Aria2 (Apart from BitTorrent)
+*   **Full RPC Standard Methods**: `system.multicall`, `system.listMethods`, `system.listNotifications`, `getSessionInfo`.
+*   **Detailed Task Introspection RPCs**: `getFiles`, `getUris`, `getPeers`, `getServers`.
+*   **Advanced Task Modification**: `changeUri`, `changePosition`, `forcePause`, `forcePauseAll`.
+*   **FTP / SFTP Protocol Support**
+*   **Metalink Support** (`addMetalink` & XML parsing)
+*   **Batch Downloading** (Parameterized URIs, Reading URIs from a text file)
+*   **Netrc Support**
+*   **Daemon Mode** (Running as a detached background service)
+
+### Advanced Features to Add (Prioritized Roadmap)
+
+1.  **Missing RPC Standard & Introspection Methods** (`getFiles`, `getUris`, `system.multicall`): Critical for GUI/Web UI frontends to display file contents and support standard Aria2 clients.
+2.  **Advanced Task Modification** (`changeUri`, `changePosition`): Highly requested for dynamic download environments.
+3.  **FTP / SFTP Protocol Support**: Expands the engine beyond HTTP/HTTPS.
+4.  **Batch Downloading & Parameterized URIs**: Useful for downloading sequences (e.g., `image_{1..100}.jpg`).
+5.  **Metalink Support**: For robust distributed downloading and chunk checksum validation.
+6.  **Daemon Mode**: To allow `pincer-engine` to run cleanly as a background service without a terminal window.

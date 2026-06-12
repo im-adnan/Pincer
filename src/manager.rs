@@ -408,6 +408,7 @@ impl DownloadManager {
         // 2. Spawn the background rust task
         let manager_clone = self.clone();
         let id_clone = id.clone();
+        let global_opts = self.global_options.read().await.clone();
         tokio::spawn(async move {
             let task = crate::task::DownloadTask {
                 url,
@@ -418,6 +419,7 @@ impl DownloadManager {
                 headers: headers.clone(),
                 global_limit: manager_clone.current_limit.clone(),
                 active_threads: manager_clone.active_threads.clone(),
+                global_options: global_opts,
             };
 
             match task.start(token.clone()).await {
@@ -635,6 +637,52 @@ impl DownloadManager {
 
         for gid in gids {
             self.unpause_task(&gid).await;
+        }
+    }
+
+    pub async fn change_uri(
+        &self,
+        id: &str,
+        file_index: usize,
+        del_uris: Vec<String>,
+        add_uris: Vec<String>,
+    ) -> Result<(usize, usize), String> {
+        let mut tasks = self.tasks.write().await;
+        if let Some(control) = tasks.get_mut(id) {
+            if control.status.status == "active" || control.status.status == "converting" {
+                return Err("Cannot change URI of an active task. Pause it first.".to_string());
+            }
+
+            if file_index > 0 || control.status.files.is_empty() {
+                return Err("Invalid file index.".to_string());
+            }
+
+            let mut deleted = 0;
+            let mut added = 0;
+
+            let current_uri = control.status.files[0].uris[0].uri.clone();
+            let mut new_uri = current_uri.clone();
+
+            if del_uris.contains(&current_uri) {
+                deleted = 1;
+                new_uri = String::new();
+            }
+
+            if let Some(first_add) = add_uris.first() {
+                new_uri = first_add.clone();
+                added = 1;
+            }
+
+            if new_uri.is_empty() {
+                return Err(
+                    "Cannot remove the only URI without providing a replacement.".to_string(),
+                );
+            }
+
+            control.status.files[0].uris[0].uri = new_uri;
+            Ok((deleted, added))
+        } else {
+            Err("GID not found.".to_string())
         }
     }
 
@@ -929,10 +977,23 @@ impl DownloadManager {
     /// 2. Universal Fallback: If a web page is provided, it attempts to scrape OpenGraph tags
     ///    or embedded JSON payloads (e.g., Next.js) to find the actual media URL.
     pub async fn resolve_url(&self, url: String) -> Result<crate::models::ResolveResponse, String> {
-        let client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .build()
-            .map_err(|e| e.to_string())?;
+        let global_opts = self.global_options.read().await;
+
+        let mut builder = reqwest::Client::builder();
+
+        if let Some(ua) = global_opts.get("user-agent").filter(|s| !s.is_empty()) {
+            builder = builder.user_agent(ua);
+        } else {
+            builder = builder.user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        }
+
+        if let Some(proxy_url) = global_opts.get("all-proxy").filter(|s| !s.is_empty()) {
+            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
+                builder = builder.proxy(proxy);
+            }
+        }
+
+        let client = builder.build().map_err(|e| e.to_string())?;
 
         // 1. Standard Redirect Resolution (Current Logic)
         let response = client.get(&url).send().await.map_err(|e| e.to_string())?;

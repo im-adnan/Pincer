@@ -28,6 +28,7 @@ async fn main() -> Result<(), lexopt::Error> {
     let mut format = None;
     let mut log = false;
     let mut port = 6842;
+    let mut rpc_secret: Option<String> = None;
 
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
@@ -49,6 +50,9 @@ async fn main() -> Result<(), lexopt::Error> {
             }
             lexopt::Arg::Short('p') | lexopt::Arg::Long("port") => {
                 port = parser.value()?.parse::<u16>()?;
+            }
+            lexopt::Arg::Long("rpc-secret") => {
+                rpc_secret = Some(parser.value()?.string()?);
             }
             lexopt::Arg::Short('v') | lexopt::Arg::Long("version") => {
                 println!("pincer {} ({})", VERSION, BUILD_TYPE);
@@ -139,6 +143,7 @@ async fn main() -> Result<(), lexopt::Error> {
             headers: vec![],
             global_limit: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
             active_threads: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)),
+            global_options: std::collections::HashMap::new(),
         };
 
         let token = tokio_util::sync::CancellationToken::new();
@@ -269,7 +274,7 @@ async fn main() -> Result<(), lexopt::Error> {
     manager.load_session().await;
 
     // Start WebSocket server to listen for RPC
-    rpc::start_server(manager, rx, port).await;
+    rpc::start_server(manager, rx, port, rpc_secret).await;
     Ok(())
 }
 

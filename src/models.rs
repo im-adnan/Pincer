@@ -144,27 +144,27 @@ pub fn sanitize_filename(filename: &str) -> String {
     }
 }
 
-// Aria2 Introspection Models
+// Pincer Introspection Models
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Aria2Uri {
+pub struct PincerUri {
     pub uri: String,
     pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Aria2File {
+pub struct PincerFile {
     pub index: String,
     pub path: String,
     pub length: String,
     #[serde(rename = "completedLength")]
     pub completed_length: String,
     pub selected: String,
-    pub uris: Vec<Aria2Uri>,
+    pub uris: Vec<PincerUri>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Aria2ServerItem {
+pub struct PincerServerItem {
     pub uri: String,
     #[serde(rename = "currentUri")]
     pub current_uri: String,
@@ -173,7 +173,7 @@ pub struct Aria2ServerItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Aria2Server {
+pub struct PincerServer {
     pub index: String,
-    pub servers: Vec<Aria2ServerItem>,
+    pub servers: Vec<PincerServerItem>,
 }

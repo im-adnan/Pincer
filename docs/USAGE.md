@@ -32,6 +32,7 @@ This will download the file to the current directory using multiple threads by d
 | `-f` | `--format`| Target format to convert the downloaded file to. | N/A |
 | `-l` | `--log` | Enable detailed logging. | `false` |
 | `-p` | `--port` | RPC server port. | `6842` |
+| `-D` | `--daemon`| Run Pincer Engine as a detached background daemon. | `false` |
 | `-h` | `--help` | Print help information. | N/A |
 
 ## Roadmap
@@ -182,6 +183,7 @@ All methods use the `pin.*` namespace.
 | Method | Description | Parameters | Returns |
 | :--- | :--- | :--- | :--- |
 | `pin.addUri` | Adds a new download task from one or more URIs. | `[uris (Array of Strings), options (Object, Optional), position (Integer, Optional)]` | `gid` (String) |
+| `pin.addMetalink` | Adds a download by providing a base64-encoded Metalink XML string. | `[metalink (Base64 String), options?, position?]` | `gid` (String) |
 | `pin.addTorrent` | Adds a BitTorrent download by uploading a ".torrent" file. | `[torrent (Base64 String), uris (Array of Strings, Optional), options?, position?]` | `gid` (String) |
 | `pin.remove` | Removes the download denoted by `gid`. | `[gid (String)]` | `gid` (String) |
 | `pin.removeAndFile` | Removes the download and moves its file to Trash. | `[gid (String)]` | `true` (Boolean) |
@@ -226,6 +228,17 @@ Pincer features an integrated format conversion engine that triggers automatical
   - **PDF Support**: Utilizes `sips` with a automatic built-in fallback to macOS's native `cupsfilter` utility for extremely reliable PDF generation.
 - **Audio/Video Conversion**: Uses `ffmpeg` (if globally installed) or falls back to macOS's native `afconvert` utility for audio (`mp3`, `wav`, `m4a`, `aac`).
 - **Converting Status**: During the transcoding phase, the task's state changes to `"converting"` before final completion.
+
+#### Multi-Protocol Support (FTP & SFTP)
+Beyond standard HTTP/HTTPS, Pincer Engine fully supports legacy and secure file transfer protocols.
+- **FTP (`ftp://`)**: Supports anonymous login natively. Connections seamlessly plug into Pincer's `DownloadWorker` pool for multi-threaded downloads.
+- **SFTP (`sftp://`)**: Supports completely secure file transfers over SSH. Handles passwordless authentication automatically by leveraging the user's local SSH agent.
+
+#### Metalink & Multi-Source Fallover
+Pincer can parse `.meta4` (Metalink) XML files using the `pin.addMetalink` JSON-RPC method, granting highly resilient downloads.
+- **XML Parsing**: Uses safe and fast XML parsing via `quick-xml`. Simply provide the base64-encoded XML document to the RPC method.
+- **Multi-Source Failover**: Metalink files often provide multiple fallback URIs for a single file. If Pincer encounters a connection error (e.g. timeout, connection refused) from the `priority 1` server while downloading a specific chunk, the worker will automatically retry that chunk using the `priority 2` fallback server without aborting the task.
+- **Checksum Validation**: If the Metalink XML provides a `<hash type="sha-256">` node, Pincer engine automatically computes the SHA-256 hash of the final file on a separate non-blocking thread post-download. If corruption is detected, the task is safely set to an `error` state.
 
 #### Global Speed Modes
 The `speed-mode` option in `pin.changeGlobalOption` allows for high-level bandwidth control:
@@ -287,8 +300,8 @@ Below is a tracking table showing how Pincer's original API methods map to stand
 |---------------------------|-----------------------|-------------------------|
 | `addUri`                  | `pin.addUri`          | ✅ Fully Covered        |
 | `addTorrent`              | `pin.addTorrent`      | ⚠️ Stubbed              |
-| `addMetalink`       | -                     | ❌ To Be Added          |
-| `remove`            | `pin.remove`          | ✅ Fully Covered        |
+| `addMetalink`             | `pin.addMetalink`     | ✅ Fully Covered        |
+| `remove`                  | `pin.remove`          | ✅ Fully Covered        |
 | `forceRemove`       | `pin.forceRemove`     | ✅ Fully Covered        |
 | `pause`             | `pin.pause`           | ✅ Fully Covered        |
 | `pauseAll`          | `pin.pauseAll`        | ✅ Fully Covered        |
@@ -372,3 +385,75 @@ Threads: 16
 2.  **Session Persistence**: Critical for long-running downloads; protects progress against system crashes or engine restarts.
 3.  **Advanced CLI**: Allows developers and power users to use Pincer as a drop-in, high-performance download engine.
 4.  **Worker Logs**: Provides transparency and allows users to debug connection issues or verify server range support in real-time.
+
+---
+
+## 8. Integration Guide for UI Developers (macOS Swift)
+
+Pincer Engine is designed to run silently as a backend daemon for frontend graphical user interfaces, such as macOS applications built with Swift/SwiftUI. 
+
+To integrate Pincer Engine's capabilities (like FTP/SFTP support, multi-source Metalink fallback, auto-format conversion, etc.) into your UI application, follow this standardized 4-step architecture:
+
+### Step 1: Spawn the Engine as a Background Daemon
+Bundle the compiled `pincer` binary inside your macOS App bundle. When your app launches, use `Process` (NSTask) to spawn the engine in daemon mode (`-D`) on a specific port.
+
+```swift
+let task = Process()
+task.executableURL = Bundle.main.url(forResource: "pincer", withExtension: nil)
+// Enable RPC daemon on port 6800, using the background detached flag
+task.arguments = ["--enable-rpc=true", "--rpc-listen-port=6800", "-D"]
+try? task.run()
+```
+
+### Step 2: Connect to the WebSocket RPC Server
+Once spawned, Pincer runs a lightweight WebSocket server locally. Establish a persistent WebSocket connection from your Swift app to send commands and receive real-time updates.
+
+```swift
+let url = URL(string: "ws://localhost:6800/jsonrpc")!
+let session = URLSession(configuration: .default)
+let webSocketTask = session.webSocketTask(with: url)
+webSocketTask.resume()
+```
+
+### Step 3: Trigger Features via JSON-RPC
+Instead of executing complex CLI commands, your UI will trigger Pincer's features by sending standardized JSON-RPC payloads over the WebSocket. 
+
+All of Pincer's features are invoked similarly. For example, to trigger the Metalink multi-source download feature:
+
+```swift
+// Example: Triggering a Metalink Task
+let payload: [String: Any] = [
+    "jsonrpc": "2.0",
+    "id": UUID().uuidString,
+    "method": "pin.addMetalink",
+    "params": [
+        "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0i...", // Base64 encoded payload
+        ["dir": "/Users/Shared/Downloads", "split": "16"] // Engine options
+    ]
+]
+let jsonData = try! JSONSerialization.data(withJSONObject: payload)
+webSocketTask.send(.data(jsonData)) { error in ... }
+```
+*(Whether you are using `pin.addUri` for FTP links, or `pin.changeGlobalOption` to throttle speeds, the JSON-RPC interface remains identical).*
+
+### Step 4: Map Introspection Models and Listen to Events
+Pincer streams real-time status events back to your WebSocket. You do not need to poll manually. Create Swift `Codable` structs that map to Pincer's introspection models (e.g., `PincerFile`, `PincerUri`, `TaskStatus`) to cleanly decode these incoming JSON payloads.
+
+```swift
+// Ensure you catch Pincer's standardized events to update your UI:
+// - pin.onDownloadStart
+// - pin.onDownloadComplete
+// - pin.onDownloadError (e.g. emitted if a checksum validation fails!)
+
+webSocketTask.receive { result in
+    switch result {
+    case .success(.string(let text)):
+        // Decode the JSON-RPC response and update your UI progress bars
+        let response = try? JSONDecoder().decode(PincerRPCResponse.self, from: text.data(using: .utf8)!)
+    case .failure(let error):
+        print("WebSocket Error: \(error)")
+    }
+}
+```
+
+By keeping the heavy lifting inside the Pincer Rust engine, your Swift frontend can remain incredibly lightweight—simply sending JSON-RPC commands and painting the UI based on the incoming WebSocket event stream.

@@ -770,19 +770,19 @@ fn handle_method<'a>(
 
                         if let Some(gid) = gid {
                             if let Some(status) = manager.get_task(gid).await {
-                                use crate::models::{Aria2File, Aria2Uri};
+                                use crate::models::{PincerFile, PincerUri};
                                 let mut files = Vec::new();
                                 for (i, file_data) in status.files.into_iter().enumerate() {
                                     let uris = file_data
                                         .uris
                                         .into_iter()
-                                        .map(|u| Aria2Uri {
+                                        .map(|u| PincerUri {
                                             uri: u.uri,
                                             status: "used".to_string(),
                                         })
                                         .collect();
 
-                                    files.push(Aria2File {
+                                    files.push(PincerFile {
                                         index: (i + 1).to_string(),
                                         path: file_data.path,
                                         length: status.total_length.clone(),
@@ -819,11 +819,11 @@ fn handle_method<'a>(
 
                         if let Some(gid) = gid {
                             if let Some(status) = manager.get_task(gid).await {
-                                use crate::models::Aria2Uri;
+                                use crate::models::PincerUri;
                                 let mut uris = Vec::new();
                                 for file_data in status.files {
                                     for u in file_data.uris {
-                                        uris.push(Aria2Uri {
+                                        uris.push(PincerUri {
                                             uri: u.uri,
                                             status: "used".to_string(),
                                         });
@@ -857,18 +857,18 @@ fn handle_method<'a>(
 
                         if let Some(gid) = gid {
                             if let Some(status) = manager.get_task(gid).await {
-                                use crate::models::{Aria2Server, Aria2ServerItem};
+                                use crate::models::{PincerServer, PincerServerItem};
                                 let mut servers = Vec::new();
                                 for (i, file_data) in status.files.into_iter().enumerate() {
                                     let mut items = Vec::new();
                                     for u in file_data.uris {
-                                        items.push(Aria2ServerItem {
+                                        items.push(PincerServerItem {
                                             uri: u.uri.clone(),
                                             current_uri: u.uri,
                                             download_speed: status.download_speed.clone(),
                                         });
                                     }
-                                    servers.push(Aria2Server {
+                                    servers.push(PincerServer {
                                         index: (i + 1).to_string(),
                                         servers: items,
                                     });

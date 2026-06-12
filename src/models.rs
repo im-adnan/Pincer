@@ -143,3 +143,37 @@ pub fn sanitize_filename(filename: &str) -> String {
         raw_name.to_string()
     }
 }
+
+// Aria2 Introspection Models
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Aria2Uri {
+    pub uri: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Aria2File {
+    pub index: String,
+    pub path: String,
+    pub length: String,
+    #[serde(rename = "completedLength")]
+    pub completed_length: String,
+    pub selected: String,
+    pub uris: Vec<Aria2Uri>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Aria2ServerItem {
+    pub uri: String,
+    #[serde(rename = "currentUri")]
+    pub current_uri: String,
+    #[serde(rename = "downloadSpeed")]
+    pub download_speed: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Aria2Server {
+    pub index: String,
+    pub servers: Vec<Aria2ServerItem>,
+}

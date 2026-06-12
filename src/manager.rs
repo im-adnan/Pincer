@@ -640,6 +640,52 @@ impl DownloadManager {
         }
     }
 
+    pub async fn change_uri(
+        &self,
+        id: &str,
+        file_index: usize,
+        del_uris: Vec<String>,
+        add_uris: Vec<String>,
+    ) -> Result<(usize, usize), String> {
+        let mut tasks = self.tasks.write().await;
+        if let Some(control) = tasks.get_mut(id) {
+            if control.status.status == "active" || control.status.status == "converting" {
+                return Err("Cannot change URI of an active task. Pause it first.".to_string());
+            }
+
+            if file_index > 0 || control.status.files.is_empty() {
+                return Err("Invalid file index.".to_string());
+            }
+
+            let mut deleted = 0;
+            let mut added = 0;
+
+            let current_uri = control.status.files[0].uris[0].uri.clone();
+            let mut new_uri = current_uri.clone();
+
+            if del_uris.contains(&current_uri) {
+                deleted = 1;
+                new_uri = String::new();
+            }
+
+            if let Some(first_add) = add_uris.first() {
+                new_uri = first_add.clone();
+                added = 1;
+            }
+
+            if new_uri.is_empty() {
+                return Err(
+                    "Cannot remove the only URI without providing a replacement.".to_string(),
+                );
+            }
+
+            control.status.files[0].uris[0].uri = new_uri;
+            Ok((deleted, added))
+        } else {
+            Err("GID not found.".to_string())
+        }
+    }
+
     pub async fn remove_task(&self, id: &str) -> bool {
         let res = {
             let mut tasks = self.tasks.write().await;

@@ -258,6 +258,98 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
         server_proc.terminate()
         server_proc.wait(timeout=5)
 
+    async def test_10_system_methods(self):
+        # system.listMethods
+        res = await self.rpc_call("system.listMethods")
+        self.assertIn("result", res, f"Error listMethods: {res}")
+        self.assertIsInstance(res["result"], list)
+        self.assertIn("pin.addUri", res["result"])
+
+        # system.listNotifications
+        res = await self.rpc_call("system.listNotifications")
+        self.assertIn("result", res, f"Error listNotifications: {res}")
+        self.assertIsInstance(res["result"], list)
+        self.assertIn("pin.onDownloadStart", res["result"])
+
+        # system.multicall
+        res = await self.rpc_call("system.multicall", [[
+            {"methodName": "pin.getVersion", "params": []},
+            {"methodName": "system.listNotifications", "params": []}
+        ]])
+        self.assertIn("result", res, f"Error multicall: {res}")
+        self.assertIsInstance(res["result"], list)
+        self.assertEqual(len(res["result"]), 2)
+        self.assertIn("version", res["result"][0][0])
+        self.assertIn("pin.onDownloadStart", res["result"][1][0])
+
+    async def test_11_task_introspection(self):
+        # Start a dummy task
+        res = await self.rpc_call("pin.addUri", [
+            [TEST_URL_1],
+            {"dir": TEMP_DIR, "out": "dummy_introspection.zip"}
+        ])
+        gid = res.get("result")
+        self.assertIsNotNone(gid, f"Failed to add URI, response: {res}")
+
+        # getSessionInfo
+        res = await self.rpc_call("pin.getSessionInfo")
+        self.assertIn("result", res)
+        self.assertIn("sessionId", res["result"])
+
+        # getFiles
+        res = await self.rpc_call("pin.getFiles", [gid])
+        self.assertIn("result", res)
+        self.assertIsInstance(res["result"], list)
+        self.assertTrue(len(res["result"]) > 0)
+        self.assertIn("path", res["result"][0])
+
+        # getUris
+        res = await self.rpc_call("pin.getUris", [gid])
+        self.assertIn("result", res)
+        self.assertIsInstance(res["result"], list)
+        self.assertTrue(len(res["result"]) > 0)
+        self.assertIn("uri", res["result"][0])
+
+        # getServers
+        res = await self.rpc_call("pin.getServers", [gid])
+        self.assertIn("result", res)
+        self.assertIsInstance(res["result"], list)
+        self.assertTrue(len(res["result"]) > 0)
+        self.assertIn("servers", res["result"][0])
+
+        # Cleanup
+        await self.rpc_call("pin.forceRemove", [gid])
+
+    async def test_12_advanced_task_modification(self):
+        # Start a dummy task
+        res = await self.rpc_call("pin.addUri", [
+            [TEST_URL_1],
+            {"dir": TEMP_DIR, "out": "dummy_mod.zip"}
+        ])
+        gid = res.get("result")
+        
+        # changePosition
+        res = await self.rpc_call("pin.changePosition", [gid, 0, "POS_SET"])
+        self.assertIn("result", res)
+        self.assertEqual(res["result"], 0)
+
+        # changeUri (must pause first)
+        await self.rpc_call("pin.pause", [gid])
+        
+        # wait a bit for pause
+        await asyncio.sleep(1)
+        
+        res = await self.rpc_call("pin.changeUri", [gid, 0, [TEST_URL_1], ["http://example.com/new"]])
+        self.assertIn("result", res, f"changeUri failed: {res}")
+        self.assertEqual(res["result"], [1, 1])
+
+        # Verify new URI
+        res = await self.rpc_call("pin.getUris", [gid])
+        self.assertEqual(res["result"][0]["uri"], "http://example.com/new")
+
+        # Cleanup
+        await self.rpc_call("pin.forceRemove", [gid])
+
 if __name__ == "__main__":
     unittest.main()
 

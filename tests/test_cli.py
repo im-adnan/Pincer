@@ -90,7 +90,45 @@ class TestPincerCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("RPC server port", result.stdout)
 
+    def test_07_daemon_mode(self):
+        import time
+        import asyncio
+        import websockets
+        import json
+        
+        port = "6855"
+        result = subprocess.run([self.binary, "--daemon", "--port", port], capture_output=True, text=True)
+        
+        self.assertEqual(result.returncode, 0, f"Daemon launch failed. stderr: {result.stderr}\nstdout: {result.stdout}")
+        self.assertIn("Daemon started successfully", result.stdout)
+        
+        time.sleep(2)
+        
+        async def check_daemon():
+            uri = f"ws://127.0.0.1:{port}/jsonrpc"
+            payload = json.dumps({
+                "jsonrpc": "2.0",
+                "id": "test-daemon",
+                "method": "pin.getVersion",
+                "params": []
+            })
+            async with websockets.connect(uri, open_timeout=5) as ws:
+                await ws.send(payload)
+                response = json.loads(await ws.recv())
+                self.assertIn("result", response)
+                self.assertIn("version", response["result"])
+
+        try:
+            asyncio.run(check_daemon())
+        except Exception as e:
+            self.fail(f"Failed to connect to daemonized RPC server: {e}")
+            
+        try:
+            pid_str = result.stdout.split("PID: ")[1].strip()
+            pid = int(pid_str)
+            os.kill(pid, 15) # SIGTERM
+        except Exception as e:
+            print(f"Failed to kill daemon gracefully: {e}")
+
 if __name__ == "__main__":
     unittest.main()
-
-

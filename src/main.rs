@@ -31,6 +31,7 @@ async fn main() -> Result<(), lexopt::Error> {
     let mut log = false;
     let mut port = 6842;
     let mut rpc_secret: Option<String> = None;
+    let mut daemon = false;
 
     let mut parser = lexopt::Parser::from_env();
     while let Some(arg) = parser.next()? {
@@ -56,6 +57,9 @@ async fn main() -> Result<(), lexopt::Error> {
             lexopt::Arg::Long("rpc-secret") => {
                 rpc_secret = Some(parser.value()?.string()?);
             }
+            lexopt::Arg::Short('D') | lexopt::Arg::Long("daemon") => {
+                daemon = true;
+            }
             lexopt::Arg::Short('v') | lexopt::Arg::Long("version") => {
                 println!("pincer {} ({})", VERSION, BUILD_TYPE);
                 return Ok(());
@@ -72,6 +76,7 @@ async fn main() -> Result<(), lexopt::Error> {
                 println!("  -f, --format <FMT>  Target format to convert the downloaded file to");
                 println!("  -l, --log           Enable detailed logging");
                 println!("  -p, --port <PORT>   RPC server port (Default: 6842)");
+                println!("  -D, --daemon        Run in background as a daemon");
                 println!("  -v, --version       Print version information");
                 println!("  -h, --help          Print help information");
                 return Ok(());
@@ -80,6 +85,31 @@ async fn main() -> Result<(), lexopt::Error> {
                 url = Some(val.string()?);
             }
             _ => return Err(arg.unexpected()),
+        }
+    }
+
+    if daemon {
+        // Spawn current executable in background without the daemon flag
+        let args: Vec<String> = env::args()
+            .filter(|a| a != "-D" && a != "--daemon")
+            .collect();
+        let mut command = std::process::Command::new(&args[0]);
+        command.args(&args[1..]);
+
+        // Redirect standard I/O so the daemon detaches from the terminal fully
+        command.stdin(std::process::Stdio::null());
+        command.stdout(std::process::Stdio::null());
+        command.stderr(std::process::Stdio::null());
+
+        match command.spawn() {
+            Ok(child) => {
+                println!("Daemon started successfully. PID: {}", child.id());
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Failed to start daemon: {}", e);
+                std::process::exit(1);
+            }
         }
     }
 

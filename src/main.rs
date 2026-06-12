@@ -2,6 +2,7 @@ mod manager;
 mod models;
 mod rpc;
 mod task;
+mod utils;
 mod worker;
 
 use lexopt::ValueExt;

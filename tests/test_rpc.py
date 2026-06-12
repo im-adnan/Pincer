@@ -350,6 +350,42 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
         # Cleanup
         await self.rpc_call("pin.forceRemove", [gid])
 
+    async def test_13_parameterized_uris(self):
+        # Add single parameterized URI that expands into 3
+        res = await self.rpc_call("pin.addUri", [
+            ["http://example.com/file[01-03].txt"],
+            {"dir": TEMP_DIR, "out": "dummy_param.txt"}
+        ])
+        
+        # Should return an array of 3 GIDs
+        self.assertIn("result", res, f"addUri failed: {res}")
+        self.assertIsInstance(res["result"], list)
+        self.assertEqual(len(res["result"]), 3)
+        
+        gids = res["result"]
+        
+        # Verify first task
+        res1 = await self.rpc_call("pin.getUris", [gids[0]])
+        self.assertEqual(res1["result"][0]["uri"], "http://example.com/file01.txt")
+        
+        # Verify third task
+        res3 = await self.rpc_call("pin.getUris", [gids[2]])
+        self.assertEqual(res3["result"][0]["uri"], "http://example.com/file03.txt")
+        
+        # Add brace parameterized URI
+        res = await self.rpc_call("pin.addUri", [
+            ["http://{server1,server2}/file.txt"],
+            {"dir": TEMP_DIR, "out": "dummy_param2.txt"}
+        ])
+        
+        self.assertIn("result", res)
+        self.assertIsInstance(res["result"], list)
+        self.assertEqual(len(res["result"]), 2)
+        
+        # Cleanup
+        for gid in gids + res["result"]:
+            await self.rpc_call("pin.forceRemove", [gid])
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -208,6 +208,56 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
         duplicates = [f for f in os.listdir(TEMP_DIR) if f.startswith("dummy_pause_resume") and f != test_out]
         self.assertEqual(len(duplicates), 0, f"Duplicate files created during resume: {duplicates}")
 
+    async def test_09_auth(self):
+        # Start a server with a secret on a different port
+        auth_port = 6843
+        secret = "my_super_secret"
+        import subprocess, time
+        server_proc = subprocess.Popen(
+            ["./target/debug/pincer", "--port", str(auth_port), "--rpc-secret", secret],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        time.sleep(2) # Give it time to bind
+
+        uri = f"ws://127.0.0.1:{auth_port}/jsonrpc"
+        
+        # Test 1: No secret -> Unauthorized
+        payload_no_secret = {
+            "jsonrpc": "2.0",
+            "id": "test-auth-fail",
+            "method": "pin.getVersion",
+            "params": []
+        }
+        try:
+            async with websockets.connect(uri, open_timeout=5) as ws:
+                await ws.send(json.dumps(payload_no_secret))
+                response = json.loads(await ws.recv())
+                self.assertIn("error", response)
+                self.assertEqual(response["error"]["message"], "Unauthorized")
+        except Exception as e:
+            self.fail(f"Failed to connect: {e}")
+
+        # Test 2: Valid secret -> Success
+        payload_valid = {
+            "jsonrpc": "2.0",
+            "id": "test-auth-success",
+            "method": "pin.getVersion",
+            "params": [f"token:{secret}"]
+        }
+        try:
+            async with websockets.connect(uri, open_timeout=5) as ws:
+                await ws.send(json.dumps(payload_valid))
+                response = json.loads(await ws.recv())
+                self.assertNotIn("error", response)
+                self.assertIn("result", response)
+        except Exception as e:
+            self.fail(f"Failed to connect: {e}")
+
+        # Cleanup
+        server_proc.terminate()
+        server_proc.wait(timeout=5)
+
 if __name__ == "__main__":
     unittest.main()
 

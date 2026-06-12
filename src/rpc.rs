@@ -17,10 +17,13 @@ pub async fn start_server(
     manager: Arc<DownloadManager>,
     _rx: broadcast::Receiver<String>,
     port: u16,
+    rpc_secret: Option<String>,
 ) {
+    let secret = Arc::new(rpc_secret);
     let app = Router::new()
         .route("/jsonrpc", get(ws_handler))
-        .layer(Extension(manager));
+        .layer(Extension(manager))
+        .layer(Extension(secret));
 
     let addr = format!("0.0.0.0:{}", port);
     let listener = match tokio::net::TcpListener::bind(&addr).await {
@@ -41,14 +44,19 @@ pub async fn start_server(
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Extension(manager): Extension<Arc<DownloadManager>>,
+    Extension(secret): Extension<Arc<Option<String>>>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, manager))
+    ws.on_upgrade(move |socket| handle_socket(socket, manager, secret))
 }
 
 /// Core multiplexer for an individual WebSocket connection.
 /// It concurrently parses incoming JSON-RPC payloads (routing them to `handle_method`)
 /// and pushes outbound system notifications (from the global broadcast channel) back to the client.
-async fn handle_socket(socket: WebSocket, manager: Arc<DownloadManager>) {
+async fn handle_socket(
+    socket: WebSocket,
+    manager: Arc<DownloadManager>,
+    secret: Arc<Option<String>>,
+) {
     let (mut sender, mut receiver) = socket.split();
     let mut notification_rx = manager.subscribe();
 
@@ -68,6 +76,33 @@ async fn handle_socket(socket: WebSocket, manager: Arc<DownloadManager>) {
                     if let Some(text) = text {
                         println!("Received RPC: {}", text);
                         if let Ok(req) = serde_json::from_str::<RPCRequest>(&text) {
+                            if let Some(expected_secret) = &*secret {
+                                let mut authenticated = false;
+                                if let Some(params) = &req.params {
+                                    if let Some(params_array) = params.as_array() {
+                                        if !params_array.is_empty() && params_array[0].is_string() {
+                                            let token_str = params_array[0].as_str().unwrap();
+                                            if token_str == format!("token:{}", expected_secret) {
+                                                authenticated = true;
+                                            }
+                                        }
+                                    }
+                                }
+                                if !authenticated {
+                                    let error_res = RPCResponse::<serde_json::Value> {
+                                        jsonrpc: "2.0".to_string(),
+                                        id: req.id.clone(),
+                                        result: None,
+                                        error: Some(RPCError {
+                                            code: 1,
+                                            message: "Unauthorized".to_string(),
+                                        }),
+                                    };
+                                    let _ = sender.send(Message::Text(serde_json::to_string(&error_res).unwrap())).await;
+                                    continue;
+                                }
+                            }
+
                             let response = handle_method(req, &manager).await;
                             if let Ok(json_res) = serde_json::to_string(&response) {
                                 // Ignore frequent polling methods for logging purposes

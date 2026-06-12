@@ -21,6 +21,7 @@ pub struct DownloadTask {
     pub headers: Vec<String>,
     pub global_limit: Arc<AtomicU64>,
     pub active_threads: Arc<AtomicU64>,
+    pub global_options: std::collections::HashMap<String, String>,
 }
 
 impl DownloadTask {
@@ -58,9 +59,24 @@ impl DownloadTask {
 
         let mut client_builder = Client::builder();
 
-        // Add a default User-Agent to avoid being blocked by CDNs
-        if !header_map.contains_key(reqwest::header::USER_AGENT) {
+        if let Some(ua) = self
+            .global_options
+            .get("user-agent")
+            .filter(|s| !s.is_empty())
+        {
+            client_builder = client_builder.user_agent(ua);
+        } else if !header_map.contains_key(reqwest::header::USER_AGENT) {
             client_builder = client_builder.user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        }
+
+        if let Some(proxy_url) = self
+            .global_options
+            .get("all-proxy")
+            .filter(|s| !s.is_empty())
+        {
+            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
+                client_builder = client_builder.proxy(proxy);
+            }
         }
 
         let client = client_builder

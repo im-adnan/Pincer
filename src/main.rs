@@ -1,4 +1,5 @@
 mod manager;
+mod metalink;
 mod models;
 mod protocol;
 mod rpc;
@@ -167,7 +168,7 @@ async fn main() -> Result<(), lexopt::Error> {
         }
 
         let task = crate::task::DownloadTask {
-            url: final_url.clone(),
+            urls: vec![final_url.clone()],
             filename: filename.clone(),
             save_path: dir.clone(),
             threads: split,

@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 /// It streams the HTTP response directly to disk using thread-safe offset writing (`write_at`).
 pub struct DownloadWorker {
     pub id: usize,
-    pub url: String,
+    pub sources: Vec<(String, Arc<dyn ProtocolAdapter>)>,
     pub start: u64,
     pub end: u64,
     pub file: Arc<File>,
@@ -19,7 +19,6 @@ pub struct DownloadWorker {
     pub token: CancellationToken,
     pub global_limit: Arc<AtomicU64>,
     pub active_threads: Arc<AtomicU64>,
-    pub adapter: Arc<dyn ProtocolAdapter>,
 }
 
 /// A helper RAII guard that safely increments the active thread count when created,
@@ -47,68 +46,86 @@ impl DownloadWorker {
     pub async fn run(self) -> Result<(), String> {
         let _guard = ThreadGuard::new(self.active_threads.clone());
 
-        let mut stream = self
-            .adapter
-            .download_chunk(&self.url, self.start, self.end)
-            .await?;
-
         let mut current_offset = self.start;
+        let mut last_err = String::new();
 
-        loop {
-            let start_chunk = std::time::Instant::now();
-            let chunk_res = stream.next().await;
-            let download_duration = start_chunk.elapsed();
-
-            let chunk = match chunk_res {
-                Some(Ok(c)) => c,
-                Some(Err(e)) => return Err(e),
-                None => break,
+        for (url, adapter) in &self.sources {
+            // Attempt to download chunk from this source
+            let mut stream = match adapter.download_chunk(url, current_offset, self.end).await {
+                Ok(s) => s,
+                Err(e) => {
+                    last_err = e;
+                    continue; // Try next source
+                }
             };
 
-            // Check for cancellation
-            if self.token.is_cancelled() {
-                return Ok(());
-            }
+            #[allow(unused_assignments)]
+            let mut source_failed = false;
 
-            let chunk_len = chunk.len() as u64;
+            loop {
+                let start_chunk = std::time::Instant::now();
+                let chunk_res = stream.next().await;
+                let download_duration = start_chunk.elapsed();
 
-            // Write chunk to disk safely (write_at is thread-safe on Unix/macOS)
-            self.file
-                .write_at(&chunk, current_offset)
-                .map_err(|e| format!("Failed to write to file: {}", e))?;
+                let chunk = match chunk_res {
+                    Some(Ok(c)) => c,
+                    Some(Err(e)) => {
+                        last_err = e;
+                        source_failed = true;
+                        break; // Break inner loop, try next source
+                    }
+                    None => {
+                        return Ok(()); // Chunk fully downloaded
+                    }
+                };
 
-            current_offset += chunk_len;
+                // Check for cancellation
+                if self.token.is_cancelled() {
+                    return Ok(());
+                }
 
-            // Report progress back to the orchestrator
-            let _ = self.progress_tx.send((self.id, chunk_len)).await;
+                let chunk_len = chunk.len() as u64;
 
-            // --- Global Throttling Logic ---
-            let global_limit = self.global_limit.load(Ordering::Relaxed);
-            if global_limit > 0 {
-                let thread_count = self.active_threads.load(Ordering::Relaxed).max(1);
-                // Divide work budget among active threads
-                let per_thread_limit = global_limit / thread_count;
+                // Write chunk to disk safely
+                if let Err(e) = self.file.write_at(&chunk, current_offset) {
+                    return Err(format!("Failed to write to file: {}", e)); // Unrecoverable I/O error
+                }
 
-                if let Some(target_ms) = (chunk_len * 1000).checked_div(per_thread_limit) {
-                    let actual_ms = download_duration.as_millis() as u64;
+                current_offset += chunk_len;
 
-                    if target_ms > actual_ms {
-                        let sleep_ms = target_ms - actual_ms;
-                        if sleep_ms > 0 {
-                            tokio::select! {
-                                _ = tokio::time::sleep(tokio::time::Duration::from_millis(sleep_ms)) => {},
-                                _ = self.token.cancelled() => return Ok(()),
+                // Report progress back to the orchestrator
+                let _ = self.progress_tx.send((self.id, chunk_len)).await;
+
+                // --- Global Throttling Logic ---
+                let global_limit = self.global_limit.load(Ordering::Relaxed);
+                if global_limit > 0 {
+                    let thread_count = self.active_threads.load(Ordering::Relaxed).max(1);
+                    // Divide work budget among active threads
+                    let per_thread_limit = global_limit / thread_count;
+
+                    if let Some(target_ms) = (chunk_len * 1000).checked_div(per_thread_limit) {
+                        let actual_ms = download_duration.as_millis() as u64;
+
+                        if target_ms > actual_ms {
+                            let sleep_ms = target_ms - actual_ms;
+                            if sleep_ms > 0 {
+                                tokio::select! {
+                                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(sleep_ms)) => {},
+                                    _ = self.token.cancelled() => return Ok(()),
+                                }
                             }
                         }
+                    } else {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                     }
-                } else {
-                    // If limit is extremely low (e.g. Min mode) and we have many threads,
-                    // per_thread_limit might be 0. In this case, sleep a hard 100ms to avoid spinning.
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 }
+            }
+
+            if !source_failed {
+                return Ok(());
             }
         }
 
-        Ok(())
+        Err(format!("All sources failed. Last error: {}", last_err))
     }
 }

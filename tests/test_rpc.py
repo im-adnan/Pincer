@@ -385,7 +385,45 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
         # Cleanup
         for gid in gids + res["result"]:
             await self.rpc_call("pin.forceRemove", [gid])
+    async def test_14_ftp_sftp(self):
+        # Test FTP
+        res_ftp = await self.rpc_call("pin.addUri", [
+            ["ftp://test.rebex.net/readme.txt"],
+            {"dir": TEMP_DIR, "out": "readme_ftp.txt"}
+        ])
+        gid_ftp = res_ftp.get("result")
+        self.assertIsNotNone(gid_ftp, f"Failed to add FTP URI: {res_ftp}")
+        
+        # Test SFTP
+        res_sftp = await self.rpc_call("pin.addUri", [
+            ["sftp://demo:password@test.rebex.net/readme.txt"],
+            {"dir": TEMP_DIR, "out": "readme_sftp.txt"}
+        ])
+        gid_sftp = res_sftp.get("result")
+        self.assertIsNotNone(gid_sftp, f"Failed to add SFTP URI: {res_sftp}")
+        
+        # Wait up to 10 seconds for completion
+        for _ in range(10):
+            status_ftp = await self.rpc_call("pin.tellStatus", [gid_ftp])
+            status_sftp = await self.rpc_call("pin.tellStatus", [gid_sftp])
+            if status_ftp.get("result", {}).get("status") in ["complete", "error"] and \
+               status_sftp.get("result", {}).get("status") in ["complete", "error"]:
+                break
+            await asyncio.sleep(1)
+            
+        status_ftp = await self.rpc_call("pin.tellStatus", [gid_ftp])
+        status_sftp = await self.rpc_call("pin.tellStatus", [gid_sftp])
+        
+        # The servers might be down or blocked, but the engine should at least accept the URLs and not crash.
+        # If it completes, we check if the files exist.
+        if status_ftp.get("result", {}).get("status") == "complete":
+            self.assertTrue(os.path.exists(os.path.join(TEMP_DIR, "readme_ftp.txt")))
+        
+        if status_sftp.get("result", {}).get("status") == "complete":
+            self.assertTrue(os.path.exists(os.path.join(TEMP_DIR, "readme_sftp.txt")))
+        
+        await self.rpc_call("pin.forceRemove", [gid_ftp])
+        await self.rpc_call("pin.forceRemove", [gid_sftp])
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -1,5 +1,5 @@
-use reqwest::header::{HeaderValue, RANGE};
-use reqwest::Client;
+use crate::protocol::ProtocolAdapter;
+use futures::StreamExt;
 use std::fs::File;
 use std::os::unix::fs::FileExt;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,6 +19,7 @@ pub struct DownloadWorker {
     pub token: CancellationToken,
     pub global_limit: Arc<AtomicU64>,
     pub active_threads: Arc<AtomicU64>,
+    pub adapter: Arc<dyn ProtocolAdapter>,
 }
 
 /// A helper RAII guard that safely increments the active thread count when created,
@@ -41,43 +42,26 @@ impl Drop for ThreadGuard {
 }
 
 impl DownloadWorker {
-    /// Executes the worker thread. Connects to the HTTP server, requests its specific byte range,
-    /// and streams chunks to the file offset while yielding to global speed limits.
-    pub async fn run(self, client: Client) -> Result<(), String> {
+    /// Executes the worker thread. Connects to the server via the protocol adapter,
+    /// requests its specific byte range, and streams chunks to the file offset while yielding to global speed limits.
+    pub async fn run(self) -> Result<(), String> {
         let _guard = ThreadGuard::new(self.active_threads.clone());
 
-        // Construct the Range header for this segment
-        let range_val = format!("bytes={}-{}", self.start, self.end);
-        let mut req = client.get(&self.url);
-
-        if let Ok(hv) = HeaderValue::from_str(&range_val) {
-            req = req.header(RANGE, hv);
-        }
-
-        let mut res = req.send().await.map_err(|e| e.to_string())?;
-
-        // If we requested a range, we expect 206 Partial Content.
-        // If the server returns 200 OK, it means it doesn't support ranges and is sending the whole file.
-        if self.start > 0 && res.status() == reqwest::StatusCode::OK {
-            return Err(
-                "Server does not support resuming (returned 200 OK instead of 206 Partial Content)"
-                    .to_string(),
-            );
-        }
-
-        if !res.status().is_success() {
-            return Err(format!("Server returned error: {}", res.status()));
-        }
+        let mut stream = self
+            .adapter
+            .download_chunk(&self.url, self.start, self.end)
+            .await?;
 
         let mut current_offset = self.start;
 
         loop {
             let start_chunk = std::time::Instant::now();
-            let chunk_res = res.chunk().await.map_err(|e| e.to_string())?;
+            let chunk_res = stream.next().await;
             let download_duration = start_chunk.elapsed();
 
             let chunk = match chunk_res {
-                Some(c) => c,
+                Some(Ok(c)) => c,
+                Some(Err(e)) => return Err(e),
                 None => break,
             };
 

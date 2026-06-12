@@ -316,7 +316,7 @@ fn handle_method<'a>(
                 }
             }
             "pin.addUri" => {
-                let id = uuid::Uuid::new_v4().to_string();
+                let mut return_ids = Vec::new();
                 if let Some(params) = &req.params {
                     if let Some(params_array) = params.as_array() {
                         if params_array.len() >= 2 {
@@ -333,68 +333,77 @@ fn handle_method<'a>(
                                 (uris_val.as_array(), options_val.as_object())
                             {
                                 if let Some(first_uri) = uris.first().and_then(|v| v.as_str()) {
-                                    let url = first_uri.to_string();
-                                    let default_dir = std::env::var("HOME")
-                                        .map(|h| format!("{}/Downloads", h))
-                                        .unwrap_or_else(|_| "/tmp".to_string());
+                                    let expanded_urls = crate::utils::expand_uris(first_uri);
+                                    let explicit_out = options.get("out").and_then(|v| v.as_str());
 
-                                    let dir = options
-                                        .get("dir")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or(&default_dir)
-                                        .to_string();
-                                    let filename = options
-                                        .get("out")
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string())
-                                        .unwrap_or_else(|| {
-                                            url.split('/')
-                                                .next_back()
-                                                .unwrap_or("download.bin")
-                                                .split('?')
-                                                .next()
-                                                .unwrap_or("download.bin")
-                                                .to_string()
-                                        });
-                                    let threads = options
-                                        .get("split")
-                                        .and_then(|v| v.as_str())
-                                        .and_then(|s| s.parse::<usize>().ok())
-                                        .unwrap_or_else(|| {
-                                            manager
-                                                .default_split
-                                                .load(std::sync::atomic::Ordering::Relaxed)
-                                                as usize
-                                        });
+                                    for url in expanded_urls {
+                                        let current_id = uuid::Uuid::new_v4().to_string();
+                                        return_ids.push(current_id.clone());
 
-                                    let mut headers = Vec::new();
-                                    if let Some(header_str) =
-                                        options.get("header").and_then(|v| v.as_str())
-                                    {
-                                        for line in header_str.split('\n') {
-                                            if !line.trim().is_empty() {
-                                                headers.push(line.trim().to_string());
+                                        let default_dir = std::env::var("HOME")
+                                            .map(|h| format!("{}/Downloads", h))
+                                            .unwrap_or_else(|_| "/tmp".to_string());
+
+                                        let dir = options
+                                            .get("dir")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or(&default_dir)
+                                            .to_string();
+
+                                        let filename = explicit_out
+                                            .map(|s| s.to_string())
+                                            .unwrap_or_else(|| {
+                                                url.split('/')
+                                                    .next_back()
+                                                    .unwrap_or("download.bin")
+                                                    .split('?')
+                                                    .next()
+                                                    .unwrap_or("download.bin")
+                                                    .to_string()
+                                            });
+
+                                        let threads = options
+                                            .get("split")
+                                            .and_then(|v| v.as_str())
+                                            .and_then(|s| s.parse::<usize>().ok())
+                                            .unwrap_or_else(|| {
+                                                manager
+                                                    .default_split
+                                                    .load(std::sync::atomic::Ordering::Relaxed)
+                                                    as usize
+                                            });
+
+                                        let mut headers = Vec::new();
+                                        if let Some(header_str) =
+                                            options.get("header").and_then(|v| v.as_str())
+                                        {
+                                            for line in header_str.split('\n') {
+                                                if !line.trim().is_empty() {
+                                                    headers.push(line.trim().to_string());
+                                                }
                                             }
                                         }
-                                    }
 
-                                    manager
-                                        .spawn_task(
-                                            id.clone(),
-                                            url,
-                                            filename,
-                                            dir,
-                                            threads,
-                                            0,
-                                            headers,
-                                        )
-                                        .await;
+                                        manager
+                                            .spawn_task(
+                                                current_id, url, filename, dir, threads, 0, headers,
+                                            )
+                                            .await;
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                Some(serde_json::to_value(id).unwrap())
+
+                if return_ids.is_empty() {
+                    let fallback_id = uuid::Uuid::new_v4().to_string();
+                    Some(serde_json::to_value(fallback_id).unwrap())
+                } else if return_ids.len() == 1 {
+                    Some(serde_json::to_value(&return_ids[0]).unwrap())
+                } else {
+                    Some(serde_json::to_value(return_ids).unwrap())
+                }
             }
             "pin.addTorrent" => {
                 // Stub for now, returns error or empty success

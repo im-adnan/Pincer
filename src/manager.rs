@@ -323,12 +323,13 @@ impl DownloadManager {
     pub async fn spawn_task(
         self: &Arc<Self>,
         id: String,
-        url: String,
+        urls: Vec<String>,
         mut filename: String,
         dir: String,
         threads: usize,
         resume_offset: u64,
         headers: Vec<String>,
+        expected_hash: Option<String>,
     ) {
         filename = self.generate_unique_filename(&filename, Some(&id)).await;
         let token = CancellationToken::new();
@@ -352,7 +353,7 @@ impl DownloadManager {
             is_resumable: None,
             files: vec![FileData {
                 path: format!("{}/{}", dir, filename),
-                uris: vec![FileUri { uri: url.clone() }],
+                uris: urls.iter().map(|u| FileUri { uri: u.clone() }).collect(),
             }],
             dir: dir.clone(),
         };
@@ -411,12 +412,12 @@ impl DownloadManager {
         let global_opts = self.global_options.read().await.clone();
         tokio::spawn(async move {
             let task = crate::task::DownloadTask {
-                url,
+                urls,
                 filename,
                 save_path: dir,
                 threads,
                 worker_progress: existing_worker_progress,
-                headers: headers.clone(),
+                headers,
                 global_limit: manager_clone.current_limit.clone(),
                 active_threads: manager_clone.active_threads.clone(),
                 global_options: global_opts,
@@ -478,6 +479,52 @@ impl DownloadManager {
 
                                     // Drop the lock temporarily so we don't hold the RwLock write-lock while running slow processes like sips/ffmpeg
                                     drop(locks);
+
+                                    let mut hash_valid = true;
+                                    if let Some(expected) = &expected_hash {
+                                        let file_path_clone = file_path.clone();
+                                        let expected_clone = expected.clone();
+                                        match tokio::task::spawn_blocking(move || {
+                                            use sha2::{Digest, Sha256};
+                                            let mut file = std::fs::File::open(&file_path_clone)?;
+                                            let mut hasher = Sha256::new();
+                                            std::io::copy(&mut file, &mut hasher)?;
+                                            let hash = hasher.finalize();
+                                            Ok::<String, std::io::Error>(hex::encode(hash))
+                                        })
+                                        .await
+                                        {
+                                            Ok(Ok(actual_hash)) => {
+                                                if actual_hash.to_lowercase()
+                                                    != expected_clone.to_lowercase()
+                                                {
+                                                    eprintln!(
+                                                        "Hash mismatch! Expected: {}, Actual: {}",
+                                                        expected_clone, actual_hash
+                                                    );
+                                                    hash_valid = false;
+                                                }
+                                            }
+                                            _ => {
+                                                eprintln!("Failed to calculate file hash.");
+                                                hash_valid = false;
+                                            }
+                                        }
+                                    }
+
+                                    if !hash_valid {
+                                        let mut locks = manager_clone.tasks.write().await;
+                                        if let Some(control) = locks.get_mut(&id_clone) {
+                                            control.status.status = "error".to_string();
+                                            let _ = manager_clone.tx.send(
+                                                manager_clone.build_notification(
+                                                    "pin.onDownloadError",
+                                                    &id_clone,
+                                                ),
+                                            );
+                                        }
+                                        return;
+                                    }
 
                                     // Perform conversion
                                     if !file_path.is_empty() && !url.is_empty() {
@@ -608,12 +655,13 @@ impl DownloadManager {
 
         self.spawn_task(
             id.to_string(),
-            url,
+            vec![url],
             filename,
             dir,
             threads,
             resume_offset,
             headers,
+            None,
         )
         .await;
         self.save_session().await;

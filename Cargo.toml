@@ -1,6 +1,6 @@
 [package]
 name = "pincer"
-version = "1.4.5-dev"
+version = "1.4.6-dev"
 edition = "2021"
 description = "A high-performance, multithreaded, zero-allocation concurrent download engine written in Rust"
 license = "MIT OR Apache-2.0"
@@ -30,3 +30,7 @@ suppaftp = { version = "8.0.4", features = ["tokio"] }
 url = "2.5.8"
 russh = "0.61.2"
 russh-sftp = "2.3.0"
+quick-xml = "0.31"
+base64 = "0.22"
+sha2 = "0.10"
+hex = "0.4"

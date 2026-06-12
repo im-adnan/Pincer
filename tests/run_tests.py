@@ -136,6 +136,16 @@ def main():
     else:
         print("Error: RPC server failed to start, skipping RPC tests.")
 
+    # 7.5 Run Metalink Tests
+    print("\n=============================================")
+    print("Running Metalink Tests...")
+    print("=============================================")
+    metalink_success = False
+    metalink_test = subprocess.run([sys.executable, "-m", "unittest", "tests/test_metalink.py", "-v"])
+    metalink_success = (metalink_test.returncode == 0)
+    if metalink_success:
+        print("\x1b[32m✔ Metalink tests passed successfully!\x1b[0m")
+
     # 8. Shutdown background server
     if server_proc:
         print("\nShutting down RPC server...")
@@ -156,6 +166,7 @@ def main():
     print("  - Lints (cargo clippy):      PASSED")
     print(f"  - CLI Tests:                 {'PASSED' if cli_success else 'FAILED'}")
     print(f"  - RPC Tests:                 {'PASSED' if rpc_success else 'FAILED'}")
+    print(f"  - Metalink Tests:            {'PASSED' if metalink_success else 'FAILED'}")
     print("=============================================")
     
     try:

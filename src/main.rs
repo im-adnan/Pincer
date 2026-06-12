@@ -1,5 +1,6 @@
 mod manager;
 mod models;
+mod protocol;
 mod rpc;
 mod task;
 mod utils;

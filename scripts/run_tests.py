@@ -199,7 +199,7 @@ def main():
             print("\nSkipping cleanup.")
 
     # Exit code based on successes (prior stages must have passed to reach here)
-    if cli_success and rpc_success:
+    if cli_success and rpc_success and metalink_success:
         sys.exit(0)
     else:
         sys.exit(1)

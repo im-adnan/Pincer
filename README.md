@@ -55,21 +55,7 @@ JSON-RPC Interface       axum
 How to build
 ------------
 
-Pincer is written in Rust. To build Pincer from the source package, you need the Rust toolchain installed.
-
-1. Install Rust:
-    $ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-2. Reload your environment:
-    $ source $HOME/.cargo/env
-
-To run the engine directly for testing and debugging:
-    $ cargo run
-
-To compile a highly optimized standalone binary for production:
-    $ cargo build --release
-
-After a release build, the executable is located at `target/release/pincer`.
+Please refer to the [Build and Release Guide](docs/BUILD_AND_RELEASE.md) for detailed instructions on setting up your environment, building the project, and managing releases.
 
 Command-line usage
 ------------------
@@ -105,6 +91,7 @@ Documentation
 Pincer is fully documented. Please refer to the following guides based on your needs:
 
 *   **[JSON-RPC API & Comprehensive Manual](docs/USAGE.md)**: The complete user and developer manual. Contains all CLI arguments, configurations, and WebSocket RPC commands.
+*   **[Build and Release Guide](docs/BUILD_AND_RELEASE.md)**: Detailed instructions on setting up your environment, building the project, and managing releases.
 *   **[Contributing Guidelines](docs/CONTRIBUTING.md)**: The onboarding guide for new developers, including rules for pull requests and running tests.
 *   **[Testing Guide](docs/TESTING.md)**: Complete details on running automated test runner, manual CLI/RPC tests, and writing new test cases.
 *   **[Architecture & Future Roadmap](docs/FUTURE.md)**: An internal design document detailing the engine's technical direction, dependency targets, and strategies for maintaining peak speed.

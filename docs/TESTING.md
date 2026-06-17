@@ -36,9 +36,12 @@ This suite tests the direct binary execution (`pincer [URL] [OPTIONS]`) without 
 
 The easiest and recommended way to run the entire test suite is using the automated test runner script. If you need to run specific suites individually, you can also execute them manually.
 
-### The Automated Test Runner (`tests/run_tests.py`)
+> [!NOTE]
+> If your goal is to validate the codebase before cutting a new release, please refer to the [Build and Release Guide](BUILD_AND_RELEASE.md). The automated release script delegates its checks directly to the unified test runner discussed below.
 
-Pincer includes an all-in-one test runner script at `tests/run_tests.py`. This script manages the entire lifecycle of CI verification, compilation, execution, and cleanup.
+### The Automated Test Runner (`scripts/run_tests.py`)
+
+Pincer includes an all-in-one test runner script at `scripts/run_tests.py`. This script manages the entire lifecycle of CI verification, compilation, execution, and cleanup.
 
 #### What the Runner Does:
 1. **Conflicting Process Check**: Automatically scans for and terminates any pre-existing running Pincer processes to prevent port bind conflicts on `6842`.
@@ -61,7 +64,7 @@ Ensure you have the `websockets` dependency installed, then execute the script:
 pip install websockets
 
 # Run the test suite
-python3 tests/run_tests.py
+python3 scripts/run_tests.py
 ```
 
 ---

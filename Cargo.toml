@@ -1,6 +1,6 @@
 [package]
 name = "pincer"
-version = "1.4.8-dev"
+version = "1.1.2-dev"
 edition = "2021"
 description = "A high-performance, multithreaded, zero-allocation concurrent download engine written in Rust"
 license = "MIT OR Apache-2.0"

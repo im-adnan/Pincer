@@ -34,15 +34,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    - name: Check Code Compilation
-      run: cargo check --all-targets
-
-    - name: Verify Formatting
-      run: cargo fmt --all -- --check
-
-    - name: Run Clippy Linter
-      run: cargo clippy --all-targets -- -D warnings
-
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -51,18 +42,8 @@ jobs:
     - name: Install Python dependencies
       run: pip install websockets
 
-    - name: Run CLI Tests
-      run: python -m unittest tests/test_cli.py -v
-
-    - name: Run RPC Tests
-      run: |
-        # test_cli.py builds the binary at ./target/debug/pincer
-        # We start the RPC server in the background
-        ./target/debug/pincer &
-        SERVER_PID=$!
-        sleep 2 # wait for server to start
-        python -m unittest tests/test_rpc.py -v
-        kill $SERVER_PID
+    - name: Run Unified Test Suite
+      run: python scripts/run_tests.py --ci
 
     # - name: Security Audit
     #   uses: rustsec/audit-check@v1.4.1

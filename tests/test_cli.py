@@ -102,8 +102,6 @@ class TestPincerCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"Daemon launch failed. stderr: {result.stderr}\nstdout: {result.stdout}")
         self.assertIn("Daemon started successfully", result.stdout)
         
-        time.sleep(2)
-        
         async def check_daemon():
             uri = f"ws://127.0.0.1:{port}/jsonrpc"
             payload = json.dumps({
@@ -112,11 +110,20 @@ class TestPincerCLI(unittest.TestCase):
                 "method": "pin.getVersion",
                 "params": []
             })
-            async with websockets.connect(uri, open_timeout=5) as ws:
-                await ws.send(payload)
-                response = json.loads(await ws.recv())
-                self.assertIn("result", response)
-                self.assertIn("version", response["result"])
+            
+            # Poll connection with retries instead of a hardcoded sleep
+            for attempt in range(10):
+                try:
+                    async with websockets.connect(uri, open_timeout=2) as ws:
+                        await ws.send(payload)
+                        response = json.loads(await ws.recv())
+                        self.assertIn("result", response)
+                        self.assertIn("version", response["result"])
+                        return # Success
+                except Exception as e:
+                    if attempt == 9:
+                        self.fail(f"Failed to connect to daemon after 10 attempts: {e}")
+                    await asyncio.sleep(0.5)
 
         try:
             asyncio.run(check_daemon())

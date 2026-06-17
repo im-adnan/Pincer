@@ -19,29 +19,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 ### Build & Run
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/im-adnan/pincer.git
-   cd pincer
-   ```
-2. Build the project:
-   ```bash
-   cargo build
-   ```
-3. Run the standalone CLI to test direct downloads:
-   ```bash
-   TEST_URL="https://images.unsplash.com/photo-1446941303752-a64bb1048d54?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=nasa-U2uKrI4lci8-unsplash.jpg"
-   cargo run -- "$TEST_URL" -s 8 -d ./
-   ```
-4. Run in RPC server mode (defaults to port `6842` over WebSocket):
-   ```bash
-   cargo run
-   ```
-5. Compile a highly optimized standalone binary for production:
-   ```bash
-   cargo build --release
-   ```
-   After a release build, the executable is located at `target/release/pincer`.
+
+Please refer to our [Build and Release Guide](BUILD_AND_RELEASE.md) for detailed instructions on building, running, and creating releases.
 
 ---
 

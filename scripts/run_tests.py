@@ -9,10 +9,11 @@ import signal
 def find_and_kill_pincer():
     print("Checking for existing running Pincer processes...")
     try:
-        # Run ps aux | grep pincer
         ps_out = subprocess.run(["ps", "aux"], capture_output=True, text=True)
         for line in ps_out.stdout.splitlines():
-            if "pincer" in line and "grep" not in line and "run_tests" not in line:
+            # Strictly target the compiled Pincer binary paths to avoid killing IDE extensions 
+            # like Antigravity which have 'pincer-engine' in their workspace path arguments.
+            if ("target/debug/pincer" in line or "target/release/pincer" in line) and "grep" not in line:
                 parts = line.split()
                 if len(parts) >= 2:
                     pid = int(parts[1])
@@ -20,8 +21,8 @@ def find_and_kill_pincer():
                     try:
                         os.kill(pid, signal.SIGTERM)
                         time.sleep(1)
-                    except Exception as e:
-                        print(f"Failed to kill process {pid}: {e}")
+                    except Exception:
+                        pass
     except Exception as e:
         print(f"Failed to check/kill running Pincer processes: {e}")
 
@@ -29,6 +30,8 @@ def main():
     # Find repository root (parent of tests folder)
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(repo_root)
+
+    ci_mode = "--ci" in sys.argv
 
     print("=============================================")
     print("Pincer Test Runner: Preparing environment...")
@@ -70,6 +73,13 @@ def main():
         print("\nError: Clippy linter check failed!")
         sys.exit(1)
     print("\x1b[32m✔ Clippy linter verified successfully!\x1b[0m")
+
+    print("\n3.5 Running Rust tests (cargo test)...")
+    test_res = subprocess.run(["cargo", "test"])
+    if test_res.returncode != 0:
+        print("\nError: Rust unit tests failed!")
+        sys.exit(1)
+    print("\x1b[32m✔ Rust unit tests verified successfully!\x1b[0m")
 
     # 3. Build the debug binary
     print("\n=============================================")
@@ -164,22 +174,29 @@ def main():
     print("  - Formatting (cargo fmt):     PASSED")
     print("  - Compilation (cargo check): PASSED")
     print("  - Lints (cargo clippy):      PASSED")
+    print("  - Rust Tests (cargo test):   PASSED")
     print(f"  - CLI Tests:                 {'PASSED' if cli_success else 'FAILED'}")
     print(f"  - RPC Tests:                 {'PASSED' if rpc_success else 'FAILED'}")
     print(f"  - Metalink Tests:            {'PASSED' if metalink_success else 'FAILED'}")
     print("=============================================")
     
-    try:
-        user_input = input("\nDo you want to clean up the temporary test files in tests/temporary? (Y/N): ").strip().lower()
-        if user_input in ['y', 'yes']:
-            print("Cleaning up temporary test files...")
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                print("Cleaned up tests/temporary successfully!")
-        else:
-            print(f"Keeping temporary files in: {temp_dir}")
-    except KeyboardInterrupt:
-        print("\nSkipping cleanup.")
+    if ci_mode:
+        print("\nCI mode detected. Cleaning up temporary test files automatically...")
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            print("Cleaned up tests/temporary successfully!")
+    else:
+        try:
+            user_input = input("\nDo you want to clean up the temporary test files in tests/temporary? (Y/N): ").strip().lower()
+            if user_input in ['y', 'yes']:
+                print("Cleaning up temporary test files...")
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    print("Cleaned up tests/temporary successfully!")
+            else:
+                print(f"Keeping temporary files in: {temp_dir}")
+        except KeyboardInterrupt:
+            print("\nSkipping cleanup.")
 
     # Exit code based on successes (prior stages must have passed to reach here)
     if cli_success and rpc_success:

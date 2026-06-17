@@ -17,19 +17,23 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
         os.makedirs(TEMP_DIR, exist_ok=True)
 
     async def rpc_call(self, method, params=None):
+        req_id = f"test-{method}"
         if params is None:
             params = []
         payload = {
             "jsonrpc": "2.0",
-            "id": f"test-{method}",
+            "id": req_id,
             "method": method,
             "params": params
         }
         try:
             async with websockets.connect(self.URI, open_timeout=5) as ws:
                 await ws.send(json.dumps(payload))
-                response = await ws.recv()
-                return json.loads(response)
+                while True:
+                    response = json.loads(await ws.recv())
+                    # Ignore async notifications and wait for our exact response
+                    if response.get("id") == req_id:
+                        return response
         except Exception as e:
             self.fail(f"Failed to connect or communicate with RPC server: {e}")
 

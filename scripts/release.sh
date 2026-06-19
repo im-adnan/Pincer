@@ -25,30 +25,16 @@ echo "🚀 Starting release process for version $NEW_VERSION on branch $CURRENT_
 echo "🧪 Running full test suite (Formatting, Linting, Rust Tests, Python Integration Tests)..."
 python3 scripts/run_tests.py --ci
 
-# 2. Run Release Build
-echo "🔨 Building the release version..."
+# 2. Run Release Build (local validation only)
+echo "🔨 Building release locally to validate..."
 cargo build --release
 
-# 3. Update Cargo.toml version
-echo "📝 Updating version in Cargo.toml to $NEW_VERSION..."
-# Works on macOS (BSD sed)
-sed -i '' "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
-
-# Verify that it updated
-if ! grep -q "version = \"$NEW_VERSION\"" Cargo.toml; then
-    echo "❌ Failed to update version in Cargo.toml"
-    exit 1
-fi
-
-# 4. Git Commit and Tag
-echo "📦 Committing and tagging..."
-git add Cargo.toml Cargo.lock || true
-git commit -m "chore: release version $NEW_VERSION"
+# 3. Create git tag (version is injected dynamically by CI from the tag name)
+echo "🏷️ Creating git tag v$NEW_VERSION..."
 git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
 
-echo "✅ Release $NEW_VERSION complete!"
-echo "☁️ To complete the release, push the commit and tag to GitHub:"
-echo "  git push origin HEAD"
+echo "✅ Release $NEW_VERSION ready!"
+echo "☁️ To complete the release, push the tag to GitHub:"
 echo "  git push origin \"v$NEW_VERSION\""
 echo ""
-echo "✅ Success! Once pushed, GitHub Actions will automatically build and release v$NEW_VERSION."
+echo "✅ Once pushed, GitHub Actions will build, package and publish the release automatically."

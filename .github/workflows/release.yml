@@ -30,7 +30,7 @@ jobs:
       - name: Get Version
         id: get_version
         run: |
-          VERSION=$(grep '^version =' Cargo.toml | head -n 1 | cut -d '"' -f 2)
+          VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Create Release

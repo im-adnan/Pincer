@@ -123,6 +123,15 @@ pub struct SessionTask {
     pub chunk_size: u64,
     #[serde(default)]
     pub file_type: Option<String>,
+    #[serde(default = "default_created_at")]
+    pub created_at: u128,
+}
+
+fn default_created_at() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or(std::time::Duration::from_millis(0))
+        .as_millis()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -18,6 +18,8 @@ struct TaskControl {
     options: HashMap<String, String>,
     last_update_bytes: u64,
     last_update_time: std::time::Instant,
+    expected_hash: Option<String>,
+    created_at: u128,
 }
 
 /// The central orchestrator of the Pincer engine.
@@ -119,6 +121,7 @@ impl DownloadManager {
                 worker_progress: status.worker_progress.clone(),
                 chunk_size: 0,
                 file_type: status.file_type.clone(),
+                created_at: control.created_at,
             });
         }
 
@@ -204,6 +207,8 @@ impl DownloadManager {
                                 options: opts,
                                 last_update_bytes: 0,
                                 last_update_time: std::time::Instant::now(),
+                                expected_hash: None,
+                                created_at: task.created_at,
                             },
                         );
                     }
@@ -282,6 +287,11 @@ impl DownloadManager {
                 options,
                 last_update_bytes: 0,
                 last_update_time: std::time::Instant::now(),
+                expected_hash: None,
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or(std::time::Duration::from_millis(0))
+                    .as_millis(),
             },
         );
         // Dispatch start event
@@ -344,7 +354,7 @@ impl DownloadManager {
         // (or update existing one if it's a resume)
         let mut initial_status = TaskStatus {
             gid: id.clone(),
-            status: "active".to_string(),
+            status: "waiting".to_string(),
             total_length: "0".to_string(), // Will be updated by task.start
             completed_length,
             download_speed: "0".to_string(),
@@ -358,7 +368,6 @@ impl DownloadManager {
             dir: dir.clone(),
         };
 
-        let mut existing_worker_progress = vec![0; threads];
         {
             let tasks = self.tasks.read().await;
             if let Some(existing) = tasks.get(&id) {
@@ -369,11 +378,9 @@ impl DownloadManager {
                 let mut wp = existing.status.worker_progress.clone();
                 if wp.len() == threads {
                     initial_status.worker_progress = wp.clone();
-                    existing_worker_progress = wp;
                 } else {
                     wp.resize(threads, 0);
                     initial_status.worker_progress = wp.clone();
-                    existing_worker_progress = wp;
                 }
             }
         }
@@ -396,11 +403,76 @@ impl DownloadManager {
                     options: opts,
                     last_update_bytes: 0,
                     last_update_time: std::time::Instant::now(),
+                    expected_hash,
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or(std::time::Duration::from_millis(0))
+                        .as_millis(),
                 },
             );
         }
 
         self.save_session().await;
+        self.schedule_tasks().await;
+    }
+
+    pub fn schedule_tasks<'a>(self: &'a Arc<Self>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+        Box::pin(async move {
+            let max_concurrent = {
+                let opts = self.global_options.read().await;
+                opts.get("max-concurrent-downloads")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(5)
+            };
+
+            let mut active_count = 0;
+            let mut waiting_tasks = Vec::new();
+
+            {
+                let tasks = self.tasks.read().await;
+                for (gid, control) in tasks.iter() {
+                    if control.status.status == "active" || control.status.status == "converting" {
+                        active_count += 1;
+                    } else if control.status.status == "waiting" {
+                        waiting_tasks.push((gid.clone(), control.created_at));
+                    }
+                }
+            }
+
+            waiting_tasks.sort_by_key(|(_, created_at)| *created_at);
+
+            for (gid, _) in waiting_tasks {
+                if max_concurrent > 0 && active_count >= max_concurrent {
+                    break;
+                }
+                self.execute_task(gid).await;
+                active_count += 1;
+            }
+        })
+    }
+
+    pub async fn execute_task(self: &Arc<Self>, id: String) {
+        let (urls, filename, dir, threads, existing_worker_progress, headers, expected_hash, token) = {
+            let mut locks = self.tasks.write().await;
+            if let Some(control) = locks.get_mut(&id) {
+                control.status.status = "active".to_string();
+                let token = control.token.clone();
+                let urls = control.status.files.first().map(|f| f.uris.iter().map(|u| u.uri.clone()).collect()).unwrap_or_default();
+                let filename = std::path::Path::new(&control.status.files[0].path)
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let dir = control.status.dir.clone();
+                let threads = control.options.get("split").and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+                let existing_worker_progress = control.status.worker_progress.clone();
+                let headers = control.options.get("header").map(|h| h.split('\n').filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string()).collect()).unwrap_or_default();
+                let expected_hash = control.expected_hash.clone();
+                (urls, filename, dir, threads, existing_worker_progress, headers, expected_hash, token)
+            } else {
+                return;
+            }
+        };
 
         let _ = self
             .tx
@@ -568,10 +640,13 @@ impl DownloadManager {
                     manager_clone.save_session().await;
                 }
             }
+            
+            // Check queue to see if more tasks can be spawned
+            manager_clone.schedule_tasks().await;
         });
     }
 
-    pub async fn pause_task(&self, id: &str) -> bool {
+    pub async fn pause_task(self: &Arc<Self>, id: &str) -> bool {
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.get_mut(id) {
@@ -588,11 +663,12 @@ impl DownloadManager {
         };
         if res {
             self.save_session().await;
+            self.schedule_tasks().await;
         }
         res
     }
 
-    pub async fn pause_all_tasks(&self) {
+    pub async fn pause_all_tasks(self: &Arc<Self>) {
         {
             let mut tasks = self.tasks.write().await;
             for (gid, control) in tasks.iter_mut() {
@@ -609,10 +685,11 @@ impl DownloadManager {
             }
         }
         self.save_session().await;
+        self.schedule_tasks().await;
     }
 
     pub async fn unpause_task(self: &Arc<Self>, id: &str) -> bool {
-        let (url, filename, dir, resume_offset, threads, headers) = {
+        let (url, filename, dir, mut resume_offset, threads, headers, is_resumable) = {
             let tasks = self.tasks.read().await;
             if let Some(control) = tasks.get(id) {
                 // If it's already active, don't start it again
@@ -647,11 +724,25 @@ impl DownloadManager {
                 } else {
                     Vec::new()
                 };
-                (url, filename, dir, resume_offset, threads, headers)
+                let is_resumable = control.status.is_resumable;
+                (url, filename, dir, resume_offset, threads, headers, is_resumable)
             } else {
                 return false;
             }
         };
+
+        if is_resumable == Some(false) {
+            resume_offset = 0;
+            let path_str = format!("{}/{}", dir, filename);
+            let path = std::path::Path::new(&path_str);
+            if path.exists() {
+                if let Err(e) = std::fs::remove_file(path) {
+                    eprintln!("[ERROR] Failed to permanently remove non-resumable file before restart: {}", e);
+                } else {
+                    println!("[INFO] Permanently removed non-resumable file for fast restart: {}", path.display());
+                }
+            }
+        }
 
         self.spawn_task(
             id.to_string(),
@@ -734,7 +825,7 @@ impl DownloadManager {
         }
     }
 
-    pub async fn remove_task(&self, id: &str) -> bool {
+    pub async fn remove_task(self: &Arc<Self>, id: &str) -> bool {
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.remove(id) {
@@ -746,27 +837,36 @@ impl DownloadManager {
         };
         if res {
             self.save_session().await;
+            self.schedule_tasks().await;
         }
         res
     }
 
-    pub async fn remove_task_and_file(&self, id: &str) -> bool {
+    pub async fn remove_task_and_file(self: &Arc<Self>, id: &str) -> bool {
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.remove(id) {
                 control.token.cancel();
 
-                // Attempt to move files to trash
+                // Attempt to move files to trash or delete permanently
                 for file in &control.status.files {
                     let path = std::path::Path::new(&file.path);
                     if path.exists() {
-                        if let Err(e) = trash::delete(path) {
-                            eprintln!(
-                                "[ERROR] Failed to move file to trash '{}': {}",
-                                file.path, e
-                            );
+                        if control.status.is_resumable == Some(false) && control.status.status != "complete" {
+                            if let Err(e) = std::fs::remove_file(path) {
+                                eprintln!("[ERROR] Failed to permanently remove file '{}': {}", file.path, e);
+                            } else {
+                                println!("[INFO] Permanently removed: {}", file.path);
+                            }
                         } else {
-                            println!("[INFO] Moved to trash: {}", file.path);
+                            if let Err(e) = trash::delete(path) {
+                                eprintln!(
+                                    "[ERROR] Failed to move file to trash '{}': {}",
+                                    file.path, e
+                                );
+                            } else {
+                                println!("[INFO] Moved to trash: {}", file.path);
+                            }
                         }
                     }
                 }
@@ -777,11 +877,12 @@ impl DownloadManager {
         };
         if res {
             self.save_session().await;
+            self.schedule_tasks().await;
         }
         res
     }
 
-    pub async fn force_remove_task(&self, id: &str) -> bool {
+    pub async fn force_remove_task(self: &Arc<Self>, id: &str) -> bool {
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.remove(id) {
@@ -793,6 +894,7 @@ impl DownloadManager {
         };
         if res {
             self.save_session().await;
+            self.schedule_tasks().await;
         }
         res
     }
@@ -926,6 +1028,7 @@ impl DownloadManager {
             }
         }
         self.save_session().await;
+        self.schedule_tasks().await;
     }
 
     pub async fn get_global_option(&self) -> HashMap<String, String> {

@@ -416,7 +416,9 @@ impl DownloadManager {
         self.schedule_tasks().await;
     }
 
-    pub fn schedule_tasks<'a>(self: &'a Arc<Self>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    pub fn schedule_tasks<'a>(
+        self: &'a Arc<Self>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
         Box::pin(async move {
             let max_concurrent = {
                 let opts = self.global_options.read().await;
@@ -457,18 +459,45 @@ impl DownloadManager {
             if let Some(control) = locks.get_mut(&id) {
                 control.status.status = "active".to_string();
                 let token = control.token.clone();
-                let urls = control.status.files.first().map(|f| f.uris.iter().map(|u| u.uri.clone()).collect()).unwrap_or_default();
+                let urls = control
+                    .status
+                    .files
+                    .first()
+                    .map(|f| f.uris.iter().map(|u| u.uri.clone()).collect())
+                    .unwrap_or_default();
                 let filename = std::path::Path::new(&control.status.files[0].path)
                     .file_name()
                     .unwrap_or_default()
                     .to_string_lossy()
                     .to_string();
                 let dir = control.status.dir.clone();
-                let threads = control.options.get("split").and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+                let threads = control
+                    .options
+                    .get("split")
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(1);
                 let existing_worker_progress = control.status.worker_progress.clone();
-                let headers = control.options.get("header").map(|h| h.split('\n').filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string()).collect()).unwrap_or_default();
+                let headers = control
+                    .options
+                    .get("header")
+                    .map(|h| {
+                        h.split('\n')
+                            .filter(|s| !s.trim().is_empty())
+                            .map(|s| s.trim().to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 let expected_hash = control.expected_hash.clone();
-                (urls, filename, dir, threads, existing_worker_progress, headers, expected_hash, token)
+                (
+                    urls,
+                    filename,
+                    dir,
+                    threads,
+                    existing_worker_progress,
+                    headers,
+                    expected_hash,
+                    token,
+                )
             } else {
                 return;
             }
@@ -640,7 +669,7 @@ impl DownloadManager {
                     manager_clone.save_session().await;
                 }
             }
-            
+
             // Check queue to see if more tasks can be spawned
             manager_clone.schedule_tasks().await;
         });
@@ -725,7 +754,15 @@ impl DownloadManager {
                     Vec::new()
                 };
                 let is_resumable = control.status.is_resumable;
-                (url, filename, dir, resume_offset, threads, headers, is_resumable)
+                (
+                    url,
+                    filename,
+                    dir,
+                    resume_offset,
+                    threads,
+                    headers,
+                    is_resumable,
+                )
             } else {
                 return false;
             }
@@ -739,7 +776,10 @@ impl DownloadManager {
                 if let Err(e) = std::fs::remove_file(path) {
                     eprintln!("[ERROR] Failed to permanently remove non-resumable file before restart: {}", e);
                 } else {
-                    println!("[INFO] Permanently removed non-resumable file for fast restart: {}", path.display());
+                    println!(
+                        "[INFO] Permanently removed non-resumable file for fast restart: {}",
+                        path.display()
+                    );
                 }
             }
         }
@@ -852,9 +892,14 @@ impl DownloadManager {
                 for file in &control.status.files {
                     let path = std::path::Path::new(&file.path);
                     if path.exists() {
-                        if control.status.is_resumable == Some(false) && control.status.status != "complete" {
+                        if control.status.is_resumable == Some(false)
+                            && control.status.status != "complete"
+                        {
                             if let Err(e) = std::fs::remove_file(path) {
-                                eprintln!("[ERROR] Failed to permanently remove file '{}': {}", file.path, e);
+                                eprintln!(
+                                    "[ERROR] Failed to permanently remove file '{}': {}",
+                                    file.path, e
+                                );
                             } else {
                                 println!("[INFO] Permanently removed: {}", file.path);
                             }

@@ -249,6 +249,12 @@ The `speed-mode` option in `pin.changeGlobalOption` allows for high-level bandwi
 #### Trash Integration
 The `pin.removeAndFile` method utilizes the system trash (e.g., macOS Trash) rather than performing a permanent deletion. This provides a safety net for users who may want to recover a deleted download.
 
+#### Native Safe Restarts (Non-Resumable Tasks)
+The engine natively protects against corrupted files when dealing with non-resumable connections. If you invoke `pin.unpause` on a non-resumable task that previously failed or was interrupted, the backend engine automatically resets the task's offset to zero and permanently deletes (`rm -rf`) the partially downloaded corrupt file from the disk before restarting the worker. This handles the complex teardown process instantaneously without requiring multi-step RPC interactions.
+
+#### Chronological Queue Order (FIFO Scheduling)
+Pincer implements strict First-In-First-Out (FIFO) queueing. Every task is tagged with a precise `created_at` Unix millisecond timestamp upon addition. When running multiple downloads under a concurrency limit, the engine strictly schedules and spawns waiting tasks chronologically.
+
 ### History Management
 
 | Method | Description | Parameters | Returns |

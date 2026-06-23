@@ -181,7 +181,7 @@ async fn main() -> Result<(), lexopt::Error> {
 
         let token = tokio_util::sync::CancellationToken::new();
         match task.start(token.clone()).await {
-            Ok((content_length, actual_threads, _file_type, _is_resumable, mut progress_rx)) => {
+            Ok((content_length, actual_threads, _file_type, _is_resumable, mut progress_rx, _part_filename)) => {
                 let mut completed = 0;
                 let mut thread_progress = vec![0u64; actual_threads];
                 let start_time = std::time::Instant::now();
@@ -252,6 +252,12 @@ async fn main() -> Result<(), lexopt::Error> {
                 let total_elapsed = start_time.elapsed();
                 println!("\n\n\n  \x1b[1;32m✔ Download Complete!\x1b[0m \x1b[90m(Total Time: {})\x1b[0m\n", format_duration(total_elapsed.as_secs()));
 
+                let final_path = format!("{}/{}", dir, filename);
+                #[cfg(target_os = "macos")]
+                if std::path::Path::new(&final_path).exists() {
+                    let _ = xattr::remove(&final_path, "com.apple.quarantine");
+                }
+
                 // Perform format conversion if requested in CLI options
                 if let Some(target_fmt) = format {
                     let file_path = format!("{}/{}", dir, filename);
@@ -289,6 +295,8 @@ async fn main() -> Result<(), lexopt::Error> {
                 }
             }
             Err(e) => {
+                let final_path = format!("{}/{}", dir, filename);
+                let _ = std::fs::remove_file(&final_path);
                 eprintln!("\n  \x1b[31m✖ Download Failed: {}\x1b[0m", e);
                 std::process::exit(1);
             }

@@ -514,8 +514,8 @@ impl DownloadManager {
         tokio::spawn(async move {
             let task = crate::task::DownloadTask {
                 urls,
-                filename,
-                save_path: dir,
+                filename: filename.clone(),
+                save_path: dir.clone(),
                 threads,
                 worker_progress: existing_worker_progress,
                 headers,
@@ -525,7 +525,7 @@ impl DownloadManager {
             };
 
             match task.start(token.clone()).await {
-                Ok((total_size, _actual_threads, file_type, is_resumable, mut progress_rx)) => {
+                Ok((total_size, _actual_threads, file_type, is_resumable, mut progress_rx, part_filename)) => {
                     {
                         let mut locks = manager_clone.tasks.write().await;
                         if let Some(control) = locks.get_mut(&id_clone) {
@@ -563,13 +563,8 @@ impl DownloadManager {
                                             .build_notification("pin.onDownloadError", &id_clone),
                                     );
                                 } else {
-                                    // Extract file path, URL and file type for conversion
-                                    let file_path = control
-                                        .status
-                                        .files
-                                        .first()
-                                        .map(|f| f.path.clone())
-                                        .unwrap_or_default();
+                                    // Extract file path (still the .pincer file at this point), URL and file type for conversion
+                                    let file_path = format!("{}/{}", dir, part_filename);
                                     let url = control
                                         .status
                                         .files
@@ -577,6 +572,7 @@ impl DownloadManager {
                                         .and_then(|f| f.uris.first().map(|u| u.uri.clone()))
                                         .unwrap_or_default();
                                     let ft = control.status.file_type.clone();
+                                    let final_path = format!("{}/{}", dir, filename);
 
                                     // Drop the lock temporarily so we don't hold the RwLock write-lock while running slow processes like sips/ffmpeg
                                     drop(locks);
@@ -614,6 +610,8 @@ impl DownloadManager {
                                     }
 
                                     if !hash_valid {
+                                        // Cleanup the .pincer file on hash failure
+                                        let _ = std::fs::remove_file(&file_path);
                                         let mut locks = manager_clone.tasks.write().await;
                                         if let Some(control) = locks.get_mut(&id_clone) {
                                             control.status.status = "error".to_string();
@@ -627,15 +625,28 @@ impl DownloadManager {
                                         return;
                                     }
 
-                                    // Perform conversion
-                                    if !file_path.is_empty() && !url.is_empty() {
+                                    // If a .pincer file was forced for safety (e.g. m3u8 streams), rename it back to final before conversion
+                                    if std::path::Path::new(&file_path).exists() && file_path != final_path {
+                                        if let Err(e) = std::fs::rename(&file_path, &final_path) {
+                                            eprintln!("Failed to rename pincer file to final file: {}", e);
+                                        }
+                                    }
+
+                                    // Perform conversion on the final path
+                                    if !final_path.is_empty() && !url.is_empty() {
                                         manager_clone
                                             .perform_format_conversion(
-                                                &file_path,
+                                                &final_path,
                                                 &url,
                                                 ft.as_deref(),
                                             )
                                             .await;
+                                    }
+
+                                    // Remove quarantine xattr now that the download is fully complete
+                                    #[cfg(target_os = "macos")]
+                                    if let Err(e) = xattr::remove(&final_path, "com.apple.quarantine") {
+                                        eprintln!("Warning: Failed to remove quarantine xattr: {}", e);
                                     }
 
                                     // Re-acquire the write lock to set the status
@@ -661,6 +672,11 @@ impl DownloadManager {
                         let mut locks = manager_clone.tasks.write().await;
                         if let Some(control) = locks.get_mut(&id_clone) {
                             control.status.status = "error".to_string();
+                            // Clean up the dummy target file and hidden .pincer file on unrecoverable error
+                            let final_path = format!("{}/{}", dir, filename);
+                            let part_path = format!("{}/.{}.pincer", dir, filename);
+                            let _ = std::fs::remove_file(&final_path);
+                            let _ = std::fs::remove_file(&part_path);
                         }
                     }
                     let _ = manager_clone
@@ -770,17 +786,20 @@ impl DownloadManager {
 
         if is_resumable == Some(false) {
             resume_offset = 0;
+            // Delete the dummy target file and hidden pincer file so the worker starts fresh
             let path_str = format!("{}/{}", dir, filename);
+            let part_path_str = format!("{}/.{}.pincer", dir, filename);
             let path = std::path::Path::new(&path_str);
+            let part_path = std::path::Path::new(&part_path_str);
             if path.exists() {
                 if let Err(e) = std::fs::remove_file(path) {
-                    eprintln!("[ERROR] Failed to permanently remove non-resumable file before restart: {}", e);
+                    eprintln!("[ERROR] Failed to permanently remove non-resumable dummy file before restart: {}", e);
                 } else {
-                    println!(
-                        "[INFO] Permanently removed non-resumable file for fast restart: {}",
-                        path.display()
-                    );
+                    println!("[INFO] Permanently removed non-resumable dummy file for fast restart: {}", path.display());
                 }
+            }
+            if part_path.exists() {
+                let _ = std::fs::remove_file(part_path);
             }
         }
 
@@ -891,26 +910,29 @@ impl DownloadManager {
                 // Attempt to move files to trash or delete permanently
                 for file in &control.status.files {
                     let path = std::path::Path::new(&file.path);
-                    if path.exists() {
-                        if control.status.is_resumable == Some(false)
-                            && control.status.status != "complete"
-                        {
-                            if let Err(e) = std::fs::remove_file(path) {
-                                eprintln!(
-                                    "[ERROR] Failed to permanently remove file '{}': {}",
-                                    file.path, e
-                                );
+                    let filename = path.file_name().unwrap_or_default().to_string_lossy();
+                    let dir = path.parent().unwrap_or_else(|| std::path::Path::new("")).to_string_lossy();
+                    let part_path_str = format!("{}/.{}.pincer", dir, filename);
+                    let part_path = std::path::Path::new(&part_path_str);
+
+                    let paths_to_remove = [path, part_path];
+
+                    for p in paths_to_remove {
+                        if p.exists() {
+                            if control.status.is_resumable == Some(false)
+                                && control.status.status != "complete"
+                            {
+                                if let Err(e) = std::fs::remove_file(p) {
+                                    eprintln!("[ERROR] Failed to permanently remove file '{}': {}", p.display(), e);
+                                } else {
+                                    println!("[INFO] Permanently removed: {}", p.display());
+                                }
                             } else {
-                                println!("[INFO] Permanently removed: {}", file.path);
-                            }
-                        } else {
-                            if let Err(e) = trash::delete(path) {
-                                eprintln!(
-                                    "[ERROR] Failed to move file to trash '{}': {}",
-                                    file.path, e
-                                );
-                            } else {
-                                println!("[INFO] Moved to trash: {}", file.path);
+                                if let Err(e) = trash::delete(p) {
+                                    eprintln!("[ERROR] Failed to move file to trash '{}': {}", p.display(), e);
+                                } else {
+                                    println!("[INFO] Moved to trash: {}", p.display());
+                                }
                             }
                         }
                     }

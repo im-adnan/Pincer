@@ -40,6 +40,7 @@ impl DownloadTask {
             Option<String>,
             bool,
             mpsc::Receiver<(usize, u64)>,
+            String, // part_filename (e.g. "file.mkv.pincer")
         ),
         String,
     > {
@@ -133,18 +134,48 @@ impl DownloadTask {
             1
         };
 
-        let file_path_str = format!("{}/{}", self.save_path, self.filename);
+        // Phase B: Determine filename and open for writing.
+        // DUMMY FILE APPROACH: We write the actual download data to a hidden .pincer file,
+        // and create a 0-byte dummy file at the final destination. This allows macOS Finder
+        // to display the progress pie correctly on the dummy file, while preventing it from
+        // crashing by trying to parse incomplete media bytes.
+        let part_filename = format!(".{}.pincer", self.filename);
+        let file_path_str = format!("{}/{}", self.save_path, part_filename);
+        let dummy_file_path_str = format!("{}/{}", self.save_path, self.filename);
+        
         let path = Path::new(&file_path_str);
+        let dummy_path = Path::new(&dummy_file_path_str);
 
-        // Phase B: Allocation
+        // 1. Create the dummy file (if it doesn't exist)
+        if !dummy_path.exists() {
+            let _ = OpenOptions::new().write(true).create(true).truncate(false).open(dummy_path);
+        }
+
+        // 2. Set com.apple.quarantine xattr on the DUMMY file so macOS/Finder marks this as downloading.
+        #[cfg(target_os = "macos")]
+        {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let ts = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            // Official Apple format: flags;timestamp;agent_name;UUID
+            let uuid = uuid::Uuid::new_v4().to_string().to_uppercase();
+            let qtn = format!("0083;{:08x};PincerEngine;{}", ts, uuid);
+            if let Err(e) = xattr::set(dummy_path, "com.apple.quarantine", qtn.as_bytes()) {
+                eprintln!("Warning: Failed to set quarantine xattr on dummy file: {}", e);
+            }
+        }
+
+        // 3. Open the actual hidden .pincer file for writing the download chunks
         let file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(false)
             .open(path)
-            .map_err(|e| format!("Failed to open file: {}", e))?;
+            .map_err(|e| format!("Failed to open target file: {}", e))?;
 
-        // Only set length if we are not resuming or if file is smaller than expected
+        // Pre-allocate file space on the .pincer file if we are not resuming
         let current_len = file.metadata().map(|m| m.len()).unwrap_or(0);
         if current_len < content_length {
             file.set_len(content_length)
@@ -167,6 +198,7 @@ impl DownloadTask {
                 file_type,
                 supports_ranges,
                 progress_rx,
+                part_filename,
             )); // Already done
         }
 
@@ -222,6 +254,7 @@ impl DownloadTask {
             file_type,
             supports_ranges,
             progress_rx,
+            part_filename,
         ))
     }
 }

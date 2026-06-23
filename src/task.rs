@@ -135,23 +135,60 @@ impl DownloadTask {
         };
 
         // Phase B: Determine filename and open for writing.
-        // DUMMY FILE APPROACH: We write the actual download data to a hidden .pincer file,
-        // and create a 0-byte dummy file at the final destination. This allows macOS Finder
-        // to display the progress pie correctly on the dummy file, while preventing it from
-        // crashing by trying to parse incomplete media bytes.
-        let part_filename = format!(".{}.pincer", self.filename);
-        let file_path_str = format!("{}/{}", self.save_path, part_filename);
-        let dummy_file_path_str = format!("{}/{}", self.save_path, self.filename);
-        
-        let path = Path::new(&file_path_str);
-        let dummy_path = Path::new(&dummy_file_path_str);
+        // NATIVE MACOS .DOWNLOAD BUNDLE APPROACH: We create a .download directory wrapper
+        // and place an Info.plist inside so macOS native Finder shows the progress pie
+        // without crashing indexing daemons.
+        let download_bundle_name = format!("{}.download", self.filename);
+        let part_filename = format!("{}/.{}.part", download_bundle_name, self.filename);
 
-        // 1. Create the dummy file (if it doesn't exist)
-        if !dummy_path.exists() {
-            let _ = OpenOptions::new().write(true).create(true).truncate(false).open(dummy_path);
+        let bundle_path_str = format!("{}/{}", self.save_path, download_bundle_name);
+        let bundle_path = Path::new(&bundle_path_str);
+        let file_path_str = format!("{}/{}", self.save_path, part_filename);
+        let path = Path::new(&file_path_str);
+
+        // 1. Create the bundle directory if it doesn't exist
+        if !bundle_path.exists() {
+            let _ = std::fs::create_dir_all(bundle_path);
         }
 
-        // 2. Set com.apple.quarantine xattr on the DUMMY file so macOS/Finder marks this as downloading.
+        // 2. Create the Info.plist inside the bundle
+        let plist_path = bundle_path.join("Info.plist");
+        if !plist_path.exists() {
+            let ext = Path::new(&self.filename)
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let uti = match ext.as_str() {
+                "mp4" | "m4v" => "public.mpeg-4",
+                "mkv" => "public.movie",
+                "mp3" => "public.mp3",
+                "zip" => "com.pkware.zip-archive",
+                "pdf" => "com.adobe.pdf",
+                "png" => "public.png",
+                "jpg" | "jpeg" => "public.jpeg",
+                "gif" => "com.compuserve.gif",
+                "dmg" => "com.apple.disk-image",
+                _ => "public.data",
+            };
+
+            let plist_content = format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>DownloadTitle</key>
+    <string>{}</string>
+    <key>DownloadTargetUTI</key>
+    <string>{}</string>
+</dict>
+</plist>"#,
+                self.filename, uti
+            );
+            let _ = std::fs::write(&plist_path, plist_content);
+        }
+
+        // 3. Set com.apple.quarantine xattr on the BUNDLE directory so macOS/Finder marks this as downloading.
         #[cfg(target_os = "macos")]
         {
             use std::time::{SystemTime, UNIX_EPOCH};
@@ -162,12 +199,15 @@ impl DownloadTask {
             // Official Apple format: flags;timestamp;agent_name;UUID
             let uuid = uuid::Uuid::new_v4().to_string().to_uppercase();
             let qtn = format!("0083;{:08x};PincerEngine;{}", ts, uuid);
-            if let Err(e) = xattr::set(dummy_path, "com.apple.quarantine", qtn.as_bytes()) {
-                eprintln!("Warning: Failed to set quarantine xattr on dummy file: {}", e);
+            if let Err(e) = xattr::set(bundle_path, "com.apple.quarantine", qtn.as_bytes()) {
+                eprintln!(
+                    "Warning: Failed to set quarantine xattr on bundle dir: {}",
+                    e
+                );
             }
         }
 
-        // 3. Open the actual hidden .pincer file for writing the download chunks
+        // 4. Open the actual hidden part file for writing the download chunks
         let file = OpenOptions::new()
             .write(true)
             .create(true)

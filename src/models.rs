@@ -102,29 +102,38 @@ pub struct ResolveResponse {
     pub is_resumable: Option<bool>,
 }
 
-/// Represents a serialized task saved to disk across sessions.
+/// Represents a serialized task saved to disk across sessions in `pincer.session`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionTask {
     pub id: String,
-    pub url: String,
     pub filename: String,
     pub save_path: String,
+    pub status: String,
+    #[serde(default = "default_created_at")]
+    pub created_at: u128,
+    // The following fields are populated for complete/error tasks that no longer have a .download bundle
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub total_length: Option<u64>,
+    #[serde(default)]
+    pub completed_length: Option<u64>,
+}
+
+/// Represents the internal state of an active/paused download, stored within the .download bundle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BundleState {
+    pub url: String,
     pub threads: usize,
     pub headers: Vec<String>,
-    pub status: String,
     pub total_length: u64,
     pub completed_length: u64,
-    /// Per-worker bytes downloaded within their own chunk. Empty for fresh downloads.
     #[serde(default)]
     pub worker_progress: Vec<u64>,
-    /// The original chunk size used when the download was started.
-    /// Zero means the task is fresh and chunk size should be calculated from total_length.
     #[serde(default)]
     pub chunk_size: u64,
     #[serde(default)]
     pub file_type: Option<String>,
-    #[serde(default = "default_created_at")]
-    pub created_at: u128,
 }
 
 fn default_created_at() -> u128 {

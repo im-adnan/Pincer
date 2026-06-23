@@ -104,24 +104,55 @@ impl DownloadManager {
                 })
                 .unwrap_or_default();
 
-            session_tasks.push(crate::models::SessionTask {
-                id: id.clone(),
-                url: first_uri,
-                filename,
-                save_path: status.dir.clone(),
-                threads: control
+            let mut opt_url = None;
+            let mut opt_total = None;
+            let mut opt_completed = None;
+
+            if saved_status == "complete" || saved_status == "error" {
+                opt_url = Some(first_uri);
+                opt_total = Some(status.total_length.parse::<u64>().unwrap_or(0));
+                opt_completed = Some(status.completed_length.parse::<u64>().unwrap_or(0));
+            } else {
+                // For active/paused tasks, save state into the .download bundle
+                let threads = control
                     .options
                     .get("split")
                     .and_then(|s| s.parse::<usize>().ok())
-                    .unwrap_or(4),
-                headers,
+                    .unwrap_or(4);
+
+                let bundle_state = crate::models::BundleState {
+                    url: first_uri,
+                    threads,
+                    headers,
+                    total_length: status.total_length.parse::<u64>().unwrap_or(0),
+                    completed_length: status.completed_length.parse::<u64>().unwrap_or(0),
+                    worker_progress: status.worker_progress.clone(),
+                    chunk_size: 0,
+                    file_type: status.file_type.clone(),
+                };
+
+                let bundle_dir = format!("{}/{}.download", status.dir, filename);
+                if !std::path::Path::new(&bundle_dir).exists() {
+                    let _ = std::fs::create_dir_all(&bundle_dir);
+                }
+
+                let state_path = format!("{}/state.json", bundle_dir);
+                if let Ok(json_str) = serde_json::to_string_pretty(&bundle_state) {
+                    if let Err(e) = std::fs::write(&state_path, json_str) {
+                        eprintln!("Failed to write state.json: {}", e);
+                    }
+                }
+            }
+
+            session_tasks.push(crate::models::SessionTask {
+                id: id.clone(),
+                filename,
+                save_path: status.dir.clone(),
                 status: saved_status,
-                total_length: status.total_length.parse::<u64>().unwrap_or(0),
-                completed_length: status.completed_length.parse::<u64>().unwrap_or(0),
-                worker_progress: status.worker_progress.clone(),
-                chunk_size: 0,
-                file_type: status.file_type.clone(),
                 created_at: control.created_at,
+                url: opt_url,
+                total_length: opt_total,
+                completed_length: opt_completed,
             });
         }
 
@@ -174,25 +205,66 @@ impl DownloadManager {
                     let mut opts = HashMap::new();
                     opts.insert("dir".to_string(), task.save_path.clone());
                     opts.insert("out".to_string(), task.filename.clone());
-                    opts.insert("split".to_string(), task.threads.to_string());
-                    if !task.headers.is_empty() {
-                        opts.insert("header".to_string(), task.headers.join("\n"));
+
+                    let mut task_status = task.status.clone();
+                    let mut bundle_state_opt = None;
+
+                    if task_status != "complete" && task_status != "error" {
+                        let state_path =
+                            format!("{}/{}.download/state.json", task.save_path, task.filename);
+                        if let Ok(json_str) = std::fs::read_to_string(&state_path) {
+                            if let Ok(b) =
+                                serde_json::from_str::<crate::models::BundleState>(&json_str)
+                            {
+                                bundle_state_opt = Some(b);
+                            } else {
+                                task_status = "error".to_string();
+                            }
+                        } else {
+                            task_status = "error".to_string();
+                        }
+                    }
+
+                    let (url, threads, headers, total_len, comp_len, wp, file_type) =
+                        if let Some(b) = bundle_state_opt {
+                            (
+                                b.url,
+                                b.threads,
+                                b.headers,
+                                b.total_length,
+                                b.completed_length,
+                                b.worker_progress,
+                                b.file_type,
+                            )
+                        } else {
+                            (
+                                task.url.clone().unwrap_or_default(),
+                                1,
+                                Vec::new(),
+                                task.total_length.unwrap_or(0),
+                                task.completed_length.unwrap_or(0),
+                                Vec::new(),
+                                None,
+                            )
+                        };
+
+                    opts.insert("split".to_string(), threads.to_string());
+                    if !headers.is_empty() {
+                        opts.insert("header".to_string(), headers.join("\n"));
                     }
 
                     let initial_status = TaskStatus {
                         gid: task.id.clone(),
-                        status: task.status.clone(),
-                        total_length: task.total_length.to_string(),
-                        completed_length: task.completed_length.to_string(),
+                        status: task_status,
+                        total_length: total_len.to_string(),
+                        completed_length: comp_len.to_string(),
                         download_speed: "0".to_string(),
-                        worker_progress: task.worker_progress.clone(),
-                        file_type: task.file_type.clone(),
+                        worker_progress: wp,
+                        file_type,
                         is_resumable: Some(true),
                         files: vec![FileData {
                             path: format!("{}/{}", task.save_path, task.filename),
-                            uris: vec![FileUri {
-                                uri: task.url.clone(),
-                            }],
+                            uris: vec![FileUri { uri: url }],
                         }],
                         dir: task.save_path.clone(),
                     };
@@ -525,7 +597,14 @@ impl DownloadManager {
             };
 
             match task.start(token.clone()).await {
-                Ok((total_size, _actual_threads, file_type, is_resumable, mut progress_rx, part_filename)) => {
+                Ok((
+                    total_size,
+                    _actual_threads,
+                    file_type,
+                    is_resumable,
+                    mut progress_rx,
+                    part_filename,
+                )) => {
                     {
                         let mut locks = manager_clone.tasks.write().await;
                         if let Some(control) = locks.get_mut(&id_clone) {
@@ -625,10 +704,26 @@ impl DownloadManager {
                                         return;
                                     }
 
-                                    // If a .pincer file was forced for safety (e.g. m3u8 streams), rename it back to final before conversion
-                                    if std::path::Path::new(&file_path).exists() && file_path != final_path {
+                                    // If a .part file was used inside a bundle, rename it back to final before conversion
+                                    if std::path::Path::new(&file_path).exists()
+                                        && file_path != final_path
+                                    {
                                         if let Err(e) = std::fs::rename(&file_path, &final_path) {
-                                            eprintln!("Failed to rename pincer file to final file: {}", e);
+                                            eprintln!(
+                                                "Failed to rename pincer file to final file: {}",
+                                                e
+                                            );
+                                        }
+                                    }
+
+                                    // Clean up the residual .download bundle directory
+                                    let bundle_path = format!("{}/{}.download", dir, filename);
+                                    if std::path::Path::new(&bundle_path).exists() {
+                                        if let Err(e) = std::fs::remove_dir_all(&bundle_path) {
+                                            eprintln!(
+                                                "Warning: Failed to remove .download bundle: {}",
+                                                e
+                                            );
                                         }
                                     }
 
@@ -645,8 +740,13 @@ impl DownloadManager {
 
                                     // Remove quarantine xattr now that the download is fully complete
                                     #[cfg(target_os = "macos")]
-                                    if let Err(e) = xattr::remove(&final_path, "com.apple.quarantine") {
-                                        eprintln!("Warning: Failed to remove quarantine xattr: {}", e);
+                                    if let Err(e) =
+                                        xattr::remove(&final_path, "com.apple.quarantine")
+                                    {
+                                        eprintln!(
+                                            "Warning: Failed to remove quarantine xattr: {}",
+                                            e
+                                        );
                                     }
 
                                     // Re-acquire the write lock to set the status
@@ -672,11 +772,11 @@ impl DownloadManager {
                         let mut locks = manager_clone.tasks.write().await;
                         if let Some(control) = locks.get_mut(&id_clone) {
                             control.status.status = "error".to_string();
-                            // Clean up the dummy target file and hidden .pincer file on unrecoverable error
+                            // Clean up the .download bundle on unrecoverable error
+                            let bundle_path = format!("{}/{}.download", dir, filename);
+                            let _ = std::fs::remove_dir_all(&bundle_path);
                             let final_path = format!("{}/{}", dir, filename);
-                            let part_path = format!("{}/.{}.pincer", dir, filename);
                             let _ = std::fs::remove_file(&final_path);
-                            let _ = std::fs::remove_file(&part_path);
                         }
                     }
                     let _ = manager_clone
@@ -795,7 +895,10 @@ impl DownloadManager {
                 if let Err(e) = std::fs::remove_file(path) {
                     eprintln!("[ERROR] Failed to permanently remove non-resumable dummy file before restart: {}", e);
                 } else {
-                    println!("[INFO] Permanently removed non-resumable dummy file for fast restart: {}", path.display());
+                    println!(
+                        "[INFO] Permanently removed non-resumable dummy file for fast restart: {}",
+                        path.display()
+                    );
                 }
             }
             if part_path.exists() {
@@ -911,7 +1014,10 @@ impl DownloadManager {
                 for file in &control.status.files {
                     let path = std::path::Path::new(&file.path);
                     let filename = path.file_name().unwrap_or_default().to_string_lossy();
-                    let dir = path.parent().unwrap_or_else(|| std::path::Path::new("")).to_string_lossy();
+                    let dir = path
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new(""))
+                        .to_string_lossy();
                     let part_path_str = format!("{}/.{}.pincer", dir, filename);
                     let part_path = std::path::Path::new(&part_path_str);
 
@@ -923,13 +1029,21 @@ impl DownloadManager {
                                 && control.status.status != "complete"
                             {
                                 if let Err(e) = std::fs::remove_file(p) {
-                                    eprintln!("[ERROR] Failed to permanently remove file '{}': {}", p.display(), e);
+                                    eprintln!(
+                                        "[ERROR] Failed to permanently remove file '{}': {}",
+                                        p.display(),
+                                        e
+                                    );
                                 } else {
                                     println!("[INFO] Permanently removed: {}", p.display());
                                 }
                             } else {
                                 if let Err(e) = trash::delete(p) {
-                                    eprintln!("[ERROR] Failed to move file to trash '{}': {}", p.display(), e);
+                                    eprintln!(
+                                        "[ERROR] Failed to move file to trash '{}': {}",
+                                        p.display(),
+                                        e
+                                    );
                                 } else {
                                     println!("[INFO] Moved to trash: {}", p.display());
                                 }

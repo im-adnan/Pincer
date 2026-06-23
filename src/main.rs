@@ -181,7 +181,14 @@ async fn main() -> Result<(), lexopt::Error> {
 
         let token = tokio_util::sync::CancellationToken::new();
         match task.start(token.clone()).await {
-            Ok((content_length, actual_threads, _file_type, _is_resumable, mut progress_rx, _part_filename)) => {
+            Ok((
+                content_length,
+                actual_threads,
+                _file_type,
+                _is_resumable,
+                mut progress_rx,
+                part_filename,
+            )) => {
                 let mut completed = 0;
                 let mut thread_progress = vec![0u64; actual_threads];
                 let start_time = std::time::Instant::now();
@@ -253,6 +260,23 @@ async fn main() -> Result<(), lexopt::Error> {
                 println!("\n\n\n  \x1b[1;32m✔ Download Complete!\x1b[0m \x1b[90m(Total Time: {})\x1b[0m\n", format_duration(total_elapsed.as_secs()));
 
                 let final_path = format!("{}/{}", dir, filename);
+
+                // Promote the file from the .download bundle
+                let file_path = format!("{}/{}", dir, part_filename);
+                if std::path::Path::new(&file_path).exists() && file_path != final_path {
+                    if let Err(e) = std::fs::rename(&file_path, &final_path) {
+                        eprintln!(
+                            "  \x1b[31m[ERROR]\x1b[0m Failed to rename part file to final file: {}",
+                            e
+                        );
+                    }
+                }
+
+                let bundle_path = format!("{}/{}.download", dir, filename);
+                if std::path::Path::new(&bundle_path).exists() {
+                    let _ = std::fs::remove_dir_all(&bundle_path);
+                }
+
                 #[cfg(target_os = "macos")]
                 if std::path::Path::new(&final_path).exists() {
                     let _ = xattr::remove(&final_path, "com.apple.quarantine");
@@ -297,6 +321,8 @@ async fn main() -> Result<(), lexopt::Error> {
             Err(e) => {
                 let final_path = format!("{}/{}", dir, filename);
                 let _ = std::fs::remove_file(&final_path);
+                let bundle_path = format!("{}/{}.download", dir, filename);
+                let _ = std::fs::remove_dir_all(&bundle_path);
                 eprintln!("\n  \x1b[31m✖ Download Failed: {}\x1b[0m", e);
                 std::process::exit(1);
             }

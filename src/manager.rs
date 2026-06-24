@@ -599,7 +599,7 @@ impl DownloadManager {
             match task.start(token.clone()).await {
                 Ok((
                     total_size,
-                    _actual_threads,
+                    actual_threads,
                     file_type,
                     is_resumable,
                     mut progress_rx,
@@ -611,6 +611,13 @@ impl DownloadManager {
                             control.status.total_length = total_size.to_string();
                             control.status.file_type = file_type;
                             control.status.is_resumable = Some(is_resumable);
+
+                            if actual_threads != control.status.worker_progress.len() {
+                                control.status.worker_progress.resize(actual_threads, 0);
+                                control
+                                    .options
+                                    .insert("split".to_string(), actual_threads.to_string());
+                            }
                         }
                     }
 

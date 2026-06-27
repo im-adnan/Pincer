@@ -19,6 +19,11 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Update Cargo.toml Version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          sed -i '' "s/version = \"1.0.0\"/version = \"$VERSION\"/" Cargo.toml
+
       - name: Build Pincer
         run: cargo build --release
 

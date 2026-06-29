@@ -304,16 +304,20 @@ async fn main() -> Result<(), lexopt::Error> {
                             );
                         } else {
                             println!("  \x1b[34m[INFO]\x1b[0m Transcoding file now...");
-                            manager
+                            if let Err(e) = manager
                                 .perform_format_conversion(
                                     &target_file_path,
                                     &final_url,
                                     Some(&file_type),
                                 )
-                                .await;
-                            println!(
-                                "  \x1b[32m[SUCCESS]\x1b[0m Conversion completed successfully!"
-                            );
+                                .await
+                            {
+                                eprintln!("  \x1b[31m[ERROR]\x1b[0m {}", e);
+                            } else {
+                                println!(
+                                    "  \x1b[32m[SUCCESS]\x1b[0m Conversion completed successfully!"
+                                );
+                            }
                         }
                     }
                 }

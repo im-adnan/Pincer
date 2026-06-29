@@ -736,13 +736,28 @@ impl DownloadManager {
 
                                     // Perform conversion on the final path
                                     if !final_path.is_empty() && !url.is_empty() {
-                                        manager_clone
+                                        if let Err(e) = manager_clone
                                             .perform_format_conversion(
                                                 &final_path,
                                                 &url,
                                                 ft.as_deref(),
                                             )
-                                            .await;
+                                            .await
+                                        {
+                                            eprintln!("Conversion error for {}: {}", final_path, e);
+                                            let mut locks = manager_clone.tasks.write().await;
+                                            if let Some(control) = locks.get_mut(&id_clone) {
+                                                control.status.status = "error".to_string();
+                                                // Optional: store error message somewhere if supported
+                                                let _ = manager_clone.tx.send(
+                                                    manager_clone.build_notification(
+                                                        "pin.onDownloadError",
+                                                        &id_clone,
+                                                    ),
+                                                );
+                                            }
+                                            return;
+                                        }
                                     }
 
                                     // Remove quarantine xattr now that the download is fully complete
@@ -1561,10 +1576,10 @@ impl DownloadManager {
         file_path_str: &str,
         url: &str,
         file_type: Option<&str>,
-    ) {
+    ) -> Result<(), String> {
         let path = std::path::Path::new(file_path_str);
         if !path.exists() {
-            return;
+            return Ok(());
         }
 
         let target_ext = path
@@ -1574,7 +1589,7 @@ impl DownloadManager {
             .unwrap_or_default();
 
         if target_ext.is_empty() {
-            return;
+            return Ok(());
         }
 
         // Try to find the source extension from URL
@@ -1609,7 +1624,7 @@ impl DownloadManager {
 
         if src_ext.is_empty() || src_ext == target_ext {
             // No conversion needed
-            return;
+            return Ok(());
         }
 
         println!(
@@ -1622,11 +1637,9 @@ impl DownloadManager {
 
         // Rename the downloaded file to a temp file containing the raw source bytes
         if let Err(e) = std::fs::rename(path, temp_path) {
-            eprintln!(
-                "[CONVERTER ERROR] Failed to rename original file to temp path: {}",
-                e
-            );
-            return;
+            let msg = format!("[CONVERTER ERROR] Failed to rename original file to temp path: {}", e);
+            eprintln!("{}", msg);
+            return Err(msg);
         }
 
         let mut success = false;
@@ -1791,10 +1804,17 @@ impl DownloadManager {
         if success {
             let _ = std::fs::remove_file(temp_path);
             println!("[CONVERTER] Cleaned up temporary file: {:?}", temp_path);
+            Ok(())
         } else {
             // Restore original file so no data is lost
-            let _ = std::fs::rename(temp_path, path);
-            eprintln!("[CONVERTER] Conversion failed or unsupported. Restored original file.");
+            let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("download");
+            let parent = path.parent().unwrap_or(std::path::Path::new(""));
+            let new_path = parent.join(format!("{}.{}", file_name, src_ext));
+
+            let _ = std::fs::rename(temp_path, &new_path);
+            let msg = format!("Conversion failed or unsupported. Restored original file as {}.", new_path.display());
+            eprintln!("[CONVERTER] {}", msg);
+            Err(msg)
         }
     }
 }

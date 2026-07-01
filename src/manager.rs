@@ -1593,7 +1593,10 @@ impl DownloadManager {
         }
 
         // Try to find the source extension from URL
-        let mut src_ext = std::path::Path::new(url)
+        let url_no_query = url.split('?').next().unwrap_or(url);
+        let url_clean = url_no_query.split('#').next().unwrap_or(url_no_query);
+
+        let mut src_ext = std::path::Path::new(url_clean)
             .extension()
             .and_then(|e| e.to_str())
             .map(|s| s.to_lowercase())
@@ -1810,20 +1813,13 @@ impl DownloadManager {
             Ok(())
         } else {
             // Restore original file so no data is lost
-            let file_name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("download");
-            let parent = path.parent().unwrap_or(std::path::Path::new(""));
-            let new_path = parent.join(format!("{}.{}", file_name, src_ext));
-
-            let _ = std::fs::rename(temp_path, &new_path);
+            let _ = std::fs::rename(temp_path, path);
             let msg = format!(
                 "Conversion failed or unsupported. Restored original file as {}.",
-                new_path.display()
+                path.display()
             );
             eprintln!("[CONVERTER] {}", msg);
-            Err(msg)
+            Ok(())
         }
     }
 }

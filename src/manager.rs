@@ -1637,7 +1637,10 @@ impl DownloadManager {
 
         // Rename the downloaded file to a temp file containing the raw source bytes
         if let Err(e) = std::fs::rename(path, temp_path) {
-            let msg = format!("[CONVERTER ERROR] Failed to rename original file to temp path: {}", e);
+            let msg = format!(
+                "[CONVERTER ERROR] Failed to rename original file to temp path: {}",
+                e
+            );
             eprintln!("{}", msg);
             return Err(msg);
         }
@@ -1807,12 +1810,18 @@ impl DownloadManager {
             Ok(())
         } else {
             // Restore original file so no data is lost
-            let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("download");
+            let file_name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("download");
             let parent = path.parent().unwrap_or(std::path::Path::new(""));
             let new_path = parent.join(format!("{}.{}", file_name, src_ext));
 
             let _ = std::fs::rename(temp_path, &new_path);
-            let msg = format!("Conversion failed or unsupported. Restored original file as {}.", new_path.display());
+            let msg = format!(
+                "Conversion failed or unsupported. Restored original file as {}.",
+                new_path.display()
+            );
             eprintln!("[CONVERTER] {}", msg);
             Err(msg)
         }

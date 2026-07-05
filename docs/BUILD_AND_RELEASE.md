@@ -23,6 +23,10 @@ source $HOME/.cargo/env
    cd Pincer-Engine
    ```
 
+   > If you use environment variables in your scripts or CI, set `GITHUB_OWNER` to the GitHub account and `GITHUB_REPO` to `Pincer-Engine`.
+
+   If you use local automation, make sure `GITHUB_OWNER` and `GITHUB_REPO` are defined before running scripts that reference repository URLs.
+
 2. **Run in development/RPC server mode (defaults to port `6842` over WebSocket):**
    ```bash
    cargo run

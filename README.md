@@ -35,6 +35,8 @@ git clone https://github.com/<GITHUB_OWNER>/Pincer-Engine
 cd Pincer-Engine
 ```
 
+> If you use automation scripts or CI, set `GITHUB_OWNER` to your GitHub account and `GITHUB_REPO` to `Pincer-Engine`.
+
 ## Dependencies
 
 | Feature | Dependency |

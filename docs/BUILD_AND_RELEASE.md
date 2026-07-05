@@ -19,8 +19,8 @@ source $HOME/.cargo/env
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/im-adnan/pincer.git
-   cd pincer
+   git clone https://github.com/<GITHUB_OWNER>/Pincer-Engine.git
+   cd Pincer-Engine
    ```
 
 2. **Run in development/RPC server mode (defaults to port `6842` over WebSocket):**

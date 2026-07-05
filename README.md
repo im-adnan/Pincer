@@ -31,7 +31,7 @@ We use standard semantic versioning (`MAJOR.MINOR.PATCH`) for Pincer releases. R
 Clone the repository from GitHub:
 
 ```bash
-git clone https://github.com/im-adnan/Pincer-Engine
+git clone https://github.com/<GITHUB_OWNER>/Pincer-Engine
 cd Pincer-Engine
 ```
 

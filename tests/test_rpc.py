@@ -429,5 +429,37 @@ class TestPincerRPC(unittest.IsolatedAsyncioTestCase):
         await self.rpc_call("pin.forceRemove", [gid_ftp])
         await self.rpc_call("pin.forceRemove", [gid_sftp])
 
+    async def test_15_bittorrent(self):
+        # Test adding magnet link
+        magnet_url = "magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Ubuntu"
+        res = await self.rpc_call("pin.addUri", [
+            [magnet_url],
+            {"dir": TEMP_DIR}
+        ])
+        gid = res.get("result")
+        self.assertIsNotNone(gid, f"Failed to add magnet link: {res}")
+        
+        # Tell status and check fields
+        res_status = await self.rpc_call("pin.tellStatus", [gid])
+        status = res_status.get("result", {})
+        self.assertEqual(status.get("fileType"), "torrent")
+        self.assertEqual(status.get("infoHash"), "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c")
+        
+        # Pause
+        res_pause = await self.rpc_call("pin.pause", [gid])
+        self.assertNotIn("error", res_pause)
+        res_status = await self.rpc_call("pin.tellStatus", [gid])
+        self.assertEqual(res_status.get("result", {}).get("status"), "paused")
+        
+        # Unpause
+        res_unpause = await self.rpc_call("pin.unpause", [gid])
+        self.assertNotIn("error", res_unpause)
+        res_status = await self.rpc_call("pin.tellStatus", [gid])
+        self.assertEqual(res_status.get("result", {}).get("status"), "active")
+        
+        # Remove
+        res_remove = await self.rpc_call("pin.remove", [gid])
+        self.assertNotIn("error", res_remove)
+
 if __name__ == "__main__":
     unittest.main()

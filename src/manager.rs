@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 use crate::models::{
     FileData, FileUri, GlobalStat, NotificationParam, RPCNotification, TaskStatus,
 };
+use librqbit::{api::TorrentIdOrHash, AddTorrent, AddTorrentOptions, ManagedTorrent, Session};
 
 /// Internal control structure for managing a single download task's state.
 /// Holds the cancellation token, specific task options, and live speed calculation tracking data.
@@ -33,6 +34,8 @@ pub struct DownloadManager {
     pub max_seen_speed: Arc<AtomicU64>,
     pub active_threads: Arc<AtomicU64>,
     pub default_split: Arc<AtomicU64>,
+    pub torrent_session: tokio::sync::OnceCell<Arc<Session>>,
+    pub torrent_handles: RwLock<HashMap<String, Arc<ManagedTorrent>>>,
 }
 
 impl DownloadManager {
@@ -46,12 +49,375 @@ impl DownloadManager {
             max_seen_speed: Arc::new(AtomicU64::new(10 * 1024 * 1024)), // Default 10MB/s for initial half half
             active_threads: Arc::new(AtomicU64::new(0)),
             default_split: Arc::new(AtomicU64::new(1)),
+            torrent_session: tokio::sync::OnceCell::new(),
+            torrent_handles: RwLock::new(HashMap::new()),
         });
         (manager, rx)
     }
 
     pub fn get_version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
+    }
+
+    pub async fn get_torrent_session(&self) -> Result<Arc<Session>, String> {
+        self.torrent_session
+            .get_or_try_init(|| async {
+                let home = std::env::var("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::env::temp_dir());
+                let dir = home.join(".pincer").join("torrents");
+                std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+                let opts = librqbit::SessionOptions {
+                    listen_port_range: Some(6881..6891),
+                    enable_upnp_port_forwarding: false,
+                    ..Default::default()
+                };
+                let session = match Session::new_with_opts(dir.clone(), opts).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("[PINCER INFO] Failed to bind standard torrent ports: {:?}. Falling back to ephemeral port.", e);
+                        let fallback_opts = librqbit::SessionOptions {
+                            listen_port_range: Some(0..1),
+                            enable_upnp_port_forwarding: false,
+                            ..Default::default()
+                        };
+                        Session::new_with_opts(dir, fallback_opts)
+                            .await
+                            .map_err(|err| format!("Failed to create librqbit session with ephemeral port fallback: {:?}", err))?
+                    }
+                };
+                Ok(session)
+            })
+            .await
+            .cloned()
+    }
+
+    pub async fn spawn_torrent_task(
+        self: &Arc<Self>,
+        id: String,
+        torrent_source: AddTorrent<'static>,
+        dir: String,
+        options: HashMap<String, String>,
+    ) -> Result<String, String> {
+        let session = self.get_torrent_session().await?;
+        println!(
+            "[PINCER OUT] spawn_torrent_task called for id: {}, dir: {}",
+            id, dir
+        );
+
+        let (initial_name, initial_info_hash) = match &torrent_source {
+            AddTorrent::Url(url) => {
+                let name = if url.starts_with("magnet:?") {
+                    if let Some(pos) = url.find("dn=") {
+                        let rest = &url[pos + 3..];
+                        let end = rest.find('&').unwrap_or(rest.len());
+                        percent_encoding::percent_decode_str(&rest[..end])
+                            .decode_utf8()
+                            .map(|s| s.into_owned())
+                            .unwrap_or_else(|_| "Magnet Link".to_string())
+                    } else {
+                        "Magnet Link".to_string()
+                    }
+                } else {
+                    url.split('/')
+                        .next_back()
+                        .and_then(|s| s.split('?').next())
+                        .unwrap_or("Torrent Link")
+                        .to_string()
+                };
+
+                let info_hash = if let Some(pos) = url.find("urn:btih:") {
+                    let start = pos + 9;
+                    let rest = &url[start..];
+                    let end = rest.find('&').unwrap_or(rest.len());
+                    Some(rest[..end].to_lowercase())
+                } else {
+                    None
+                };
+
+                (name, info_hash)
+            }
+            AddTorrent::TorrentFileBytes(bytes) => {
+                if let Ok(t) = librqbit::torrent_from_bytes::<&[u8]>(bytes.as_ref()) {
+                    let name = t
+                        .info
+                        .name
+                        .as_ref()
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                        .unwrap_or_else(|| "Torrent File".to_string());
+                    let info_hash = Some(t.info_hash.as_string());
+                    (name, info_hash)
+                } else {
+                    ("Torrent File".to_string(), None)
+                }
+            }
+        };
+        let source_url = match &torrent_source {
+            AddTorrent::Url(u) => Some(u.to_string()),
+            _ => None,
+        };
+
+        let initial_status = TaskStatus {
+            gid: id.clone(),
+            status: "active".to_string(),
+            total_length: "0".to_string(),
+            completed_length: "0".to_string(),
+            download_speed: "0".to_string(),
+            worker_progress: vec![],
+            file_type: Some("torrent".to_string()),
+            is_resumable: Some(true),
+            files: vec![],
+            dir: dir.clone(),
+            bittorrent: Some(crate::models::TorrentInfo {
+                announce_list: vec![],
+                comment: None,
+                creation_date: None,
+                mode: "single".to_string(),
+                info: crate::models::TorrentInfoInner {
+                    name: initial_name.clone(),
+                },
+            }),
+            info_hash: initial_info_hash,
+            num_seeders: Some(0),
+            url: source_url,
+        };
+
+        let token = CancellationToken::new();
+
+        {
+            let mut tasks = self.tasks.write().await;
+            let mut opts = options.clone();
+            opts.insert("dir".to_string(), dir.clone());
+            opts.insert("out".to_string(), initial_name.clone());
+            tasks.insert(
+                id.clone(),
+                TaskControl {
+                    status: initial_status,
+                    token: token.clone(),
+                    options: opts,
+                    last_update_bytes: 0,
+                    last_update_time: std::time::Instant::now(),
+                    expected_hash: None,
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or(std::time::Duration::from_millis(0))
+                        .as_millis(),
+                },
+            );
+        }
+
+        let _ = self
+            .tx
+            .send(self.build_notification("pin.onDownloadStart", &id));
+
+        let only_files = if let Some(files_str) = options.get("select-files") {
+            let parsed: Vec<usize> = files_str
+                .split(',')
+                .filter_map(|s| s.parse::<usize>().ok())
+                .collect();
+            if parsed.is_empty() {
+                None
+            } else {
+                Some(parsed)
+            }
+        } else {
+            None
+        };
+
+        let manager_clone = self.clone();
+        let id_clone = id.clone();
+        let session_clone = session.clone();
+        let dir_clone = dir.clone();
+
+        tokio::spawn(async move {
+            let opts = AddTorrentOptions {
+                overwrite: true,
+                output_folder: Some(dir_clone),
+                only_files,
+                ..Default::default()
+            };
+
+            println!(
+                "[PINCER OUT] Calling add_torrent in background for id={}",
+                id_clone
+            );
+            match session_clone.add_torrent(torrent_source, Some(opts)).await {
+                Ok(add_res) => {
+                    println!("[PINCER OUT] add_torrent succeeded for id={}", id_clone);
+                    if let Some(handle) = add_res.into_handle() {
+                        {
+                            let mut handles = manager_clone.torrent_handles.write().await;
+                            handles.insert(id_clone.clone(), handle.clone());
+                        }
+
+                        let is_paused = {
+                            let tasks = manager_clone.tasks.read().await;
+                            tasks
+                                .get(&id_clone)
+                                .map(|c| c.status.status.as_str() == "paused")
+                                .unwrap_or(false)
+                        };
+
+                        if is_paused {
+                            println!("[PINCER OUT] Task was paused during initialization, pausing handle for id={}", id_clone);
+                            let _ = session_clone.pause(&handle).await;
+                        } else {
+                            let current_token = {
+                                let tasks = manager_clone.tasks.read().await;
+                                tasks.get(&id_clone).map(|c| c.token.clone())
+                            };
+                            if let Some(tok) = current_token {
+                                manager_clone
+                                    .run_torrent_stats_loop(id_clone, handle, tok)
+                                    .await;
+                            }
+                        }
+                    } else {
+                        eprintln!("[PINCER ERR] add_torrent succeeded but into_handle returned None for id={}", id_clone);
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[PINCER ERR] add_torrent failed for id={}: {:?}",
+                        id_clone, e
+                    );
+                    let mut tasks = manager_clone.tasks.write().await;
+                    if let Some(control) = tasks.get_mut(&id_clone) {
+                        control.status.status = "error".to_string();
+                    }
+                }
+            }
+        });
+
+        self.save_session().await;
+        Ok(id)
+    }
+
+    pub async fn run_torrent_stats_loop(
+        self: Arc<Self>,
+        id: String,
+        handle: Arc<ManagedTorrent>,
+        token: CancellationToken,
+    ) {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+        loop {
+            tokio::select! {
+                _ = token.cancelled() => {
+                    break;
+                }
+                _ = interval.tick() => {
+                    let stats = handle.stats();
+                    let total_bytes = stats.total_bytes;
+                    let progress_bytes = stats.progress_bytes;
+                    let has_metadata = handle.metadata.load().is_some();
+                    let finished = stats.finished && has_metadata;
+
+                    let mut download_speed = 0;
+                    let mut peer_count = 0;
+                    if let Some(live) = &stats.live {
+                        download_speed = (live.download_speed.mbps * 1024.0 * 1024.0) as u64;
+                        peer_count = live.snapshot.peer_stats.live;
+                    }
+
+                    let dir = {
+                        let tasks = self.tasks.read().await;
+                        tasks.get(&id).map(|c| c.status.dir.clone()).unwrap_or_default()
+                    };
+
+                    let files = {
+                        let mut fls = Vec::new();
+                        if let Some(meta) = &*handle.metadata.load() {
+                            let parent_dir = std::path::PathBuf::from(&dir);
+                            if let Some(files) = &meta.info.files {
+                                for f in files {
+                                    let mut file_path = parent_dir.clone();
+                                    if let Some(name_buf) = &meta.info.name {
+                                        file_path.push(String::from_utf8_lossy(name_buf.as_ref()).as_ref());
+                                    }
+                                    for component in &f.path {
+                                        file_path.push(String::from_utf8_lossy(component.as_ref()).as_ref());
+                                    }
+                                    fls.push(crate::models::FileData {
+                                        path: file_path.to_string_lossy().to_string(),
+                                        uris: vec![],
+                                    });
+                                }
+                            } else {
+                                let mut file_path = parent_dir.clone();
+                                if let Some(name_buf) = &meta.info.name {
+                                    file_path.push(String::from_utf8_lossy(name_buf.as_ref()).as_ref());
+                                }
+                                fls.push(crate::models::FileData {
+                                    path: file_path.to_string_lossy().to_string(),
+                                    uris: vec![],
+                                });
+                            }
+                        }
+                        fls
+                    };
+
+                    let bittorrent = if let Some(meta) = &*handle.metadata.load() {
+                        let mode = if meta.info.files.is_some() { "multi" } else { "single" };
+                        let name = meta.info.name.as_ref()
+                            .map(|b| String::from_utf8_lossy(b.as_ref()).to_string())
+                            .unwrap_or_default();
+                        let mut announce_list = Vec::new();
+                        for tracker in &handle.shared.trackers {
+                            announce_list.push(vec![tracker.to_string()]);
+                        }
+                        Some(crate::models::TorrentInfo {
+                            announce_list,
+                            comment: None,
+                            creation_date: None,
+                            mode: mode.to_string(),
+                            info: crate::models::TorrentInfoInner { name },
+                        })
+                    } else {
+                        None
+                    };
+
+                    let mut task_finished = false;
+                    let mut keep_seeding = false;
+                    {
+                        let mut tasks = self.tasks.write().await;
+                        if let Some(control) = tasks.get_mut(&id) {
+                            control.status.total_length = total_bytes.to_string();
+                            control.status.completed_length = progress_bytes.to_string();
+                            control.status.download_speed = download_speed.to_string();
+                            control.status.num_seeders = Some(peer_count as u32);
+                            control.status.bittorrent = bittorrent;
+                            if !files.is_empty() {
+                                control.status.files = files;
+                            }
+                            if finished {
+                                control.status.status = "complete".to_string();
+                                task_finished = true;
+                                keep_seeding = control.options.get("keep-seeding").map(|s| s == "true").unwrap_or(false);
+                            }
+                        }
+                    }
+
+                    if task_finished && !keep_seeding {
+                        if let Ok(sess) = self.get_torrent_session().await {
+                            let _ = sess.pause(&handle).await;
+                        }
+                        let mut tasks = self.tasks.write().await;
+                        if let Some(control) = tasks.get_mut(&id) {
+                            control.status.status = "paused".to_string();
+                        }
+                    }
+
+                    self.save_session().await;
+                    let _ = self.tx.send(self.build_notification("pin.onDownloadProgress", &id));
+
+                    if task_finished {
+                        let _ = self.tx.send(self.build_notification("pin.onDownloadComplete", &id));
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     fn get_session_path(&self) -> std::path::PathBuf {
@@ -153,6 +519,7 @@ impl DownloadManager {
                 url: opt_url,
                 total_length: opt_total,
                 completed_length: opt_completed,
+                file_type: status.file_type.clone(),
             });
         }
 
@@ -244,7 +611,7 @@ impl DownloadManager {
                                 task.total_length.unwrap_or(0),
                                 task.completed_length.unwrap_or(0),
                                 Vec::new(),
-                                None,
+                                task.file_type.clone(),
                             )
                         };
 
@@ -264,9 +631,13 @@ impl DownloadManager {
                         is_resumable: Some(true),
                         files: vec![FileData {
                             path: format!("{}/{}", task.save_path, task.filename),
-                            uris: vec![FileUri { uri: url }],
+                            uris: vec![FileUri { uri: url.clone() }],
                         }],
                         dir: task.save_path.clone(),
+                        bittorrent: None,
+                        info_hash: None,
+                        num_seeders: None,
+                        url: Some(url),
                     };
 
                     {
@@ -438,6 +809,10 @@ impl DownloadManager {
                 uris: urls.iter().map(|u| FileUri { uri: u.clone() }).collect(),
             }],
             dir: dir.clone(),
+            bittorrent: None,
+            info_hash: None,
+            num_seeders: None,
+            url: urls.first().cloned(),
         };
 
         {
@@ -814,11 +1189,31 @@ impl DownloadManager {
     }
 
     pub async fn pause_task(self: &Arc<Self>, id: &str) -> bool {
+        let is_torrent = {
+            let tasks = self.tasks.read().await;
+            tasks.get(id).and_then(|c| c.status.file_type.clone()) == Some("torrent".to_string())
+        };
+
+        if is_torrent {
+            let handle = {
+                let handles = self.torrent_handles.read().await;
+                handles.get(id).cloned()
+            };
+            if let Some(handle) = handle {
+                if let Ok(session) = self.get_torrent_session().await {
+                    let _ = session.pause(&handle).await;
+                }
+            }
+        }
+
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.get_mut(id) {
                 control.token.cancel();
                 control.status.status = "paused".to_string();
+                control
+                    .options
+                    .insert("keep-seeding".to_string(), "false".to_string());
                 // Dispatch pause event immediately for UI responsiveness
                 let _ = self
                     .tx
@@ -856,6 +1251,75 @@ impl DownloadManager {
     }
 
     pub async fn unpause_task(self: &Arc<Self>, id: &str) -> bool {
+        let is_torrent = {
+            let tasks = self.tasks.read().await;
+            tasks.get(id).and_then(|c| c.status.file_type.clone()) == Some("torrent".to_string())
+        };
+
+        if is_torrent {
+            let handle = {
+                let handles = self.torrent_handles.read().await;
+                handles.get(id).cloned()
+            };
+            if let Some(handle) = handle {
+                if let Ok(session) = self.get_torrent_session().await {
+                    match session.unpause(&handle).await {
+                        Ok(_) => {
+                            let token = CancellationToken::new();
+                            {
+                                let mut tasks = self.tasks.write().await;
+                                if let Some(control) = tasks.get_mut(id) {
+                                    control.status.status = "active".to_string();
+                                    control.token = token.clone();
+                                    control
+                                        .options
+                                        .insert("keep-seeding".to_string(), "true".to_string());
+                                }
+                            }
+
+                            let manager_clone = self.clone();
+                            let id_clone = id.to_string();
+                            let handle_clone = handle.clone();
+                            let token_clone = token.clone();
+                            tokio::spawn(async move {
+                                manager_clone
+                                    .run_torrent_stats_loop(id_clone, handle_clone, token_clone)
+                                    .await;
+                            });
+
+                            let _ = self
+                                .tx
+                                .send(self.build_notification("pin.onDownloadStart", id));
+                            self.save_session().await;
+                            return true;
+                        }
+                        Err(e) => {
+                            eprintln!("[PINCER ERR] session.unpause failed for id={}: {:?}", id, e);
+                        }
+                    }
+                }
+            } else {
+                let token = CancellationToken::new();
+                let mut updated = false;
+                {
+                    let mut tasks = self.tasks.write().await;
+                    if let Some(control) = tasks.get_mut(id) {
+                        control.status.status = "active".to_string();
+                        control.token = token;
+                        control
+                            .options
+                            .insert("keep-seeding".to_string(), "true".to_string());
+                        updated = true;
+                    }
+                }
+                if updated {
+                    self.save_session().await;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         let (url, filename, dir, mut resume_offset, threads, headers, is_resumable) = {
             let tasks = self.tasks.read().await;
             if let Some(control) = tasks.get(id) {
@@ -908,10 +1372,12 @@ impl DownloadManager {
 
         if is_resumable == Some(false) {
             resume_offset = 0;
-            // Delete the dummy target file and hidden pincer file so the worker starts fresh
+            // Delete the dummy target file, staging .download bundle directory, and hidden pincer file so the worker starts fresh
             let path_str = format!("{}/{}", dir, filename);
+            let bundle_path_str = format!("{}/{}.download", dir, filename);
             let part_path_str = format!("{}/.{}.pincer", dir, filename);
             let path = std::path::Path::new(&path_str);
+            let bundle_path = std::path::Path::new(&bundle_path_str);
             let part_path = std::path::Path::new(&part_path_str);
             if path.exists() {
                 if let Err(e) = std::fs::remove_file(path) {
@@ -920,6 +1386,16 @@ impl DownloadManager {
                     println!(
                         "[INFO] Permanently removed non-resumable dummy file for fast restart: {}",
                         path.display()
+                    );
+                }
+            }
+            if bundle_path.exists() {
+                if let Err(e) = std::fs::remove_dir_all(bundle_path) {
+                    eprintln!("[ERROR] Failed to permanently remove non-resumable staging bundle directory before restart: {}", e);
+                } else {
+                    println!(
+                        "[INFO] Permanently removed non-resumable staging bundle directory for fast restart: {}",
+                        bundle_path.display()
                     );
                 }
             }
@@ -1010,6 +1486,25 @@ impl DownloadManager {
     }
 
     pub async fn remove_task(self: &Arc<Self>, id: &str) -> bool {
+        let is_torrent = {
+            let tasks = self.tasks.read().await;
+            tasks.get(id).and_then(|c| c.status.file_type.clone()) == Some("torrent".to_string())
+        };
+
+        if is_torrent {
+            let handle = {
+                let mut handles = self.torrent_handles.write().await;
+                handles.remove(id)
+            };
+            if let Some(handle) = handle {
+                if let Ok(session) = self.get_torrent_session().await {
+                    let _ = session
+                        .delete(TorrentIdOrHash::Id(handle.id()), false)
+                        .await;
+                }
+            }
+        }
+
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.remove(id) {
@@ -1027,52 +1522,162 @@ impl DownloadManager {
     }
 
     pub async fn remove_task_and_file(self: &Arc<Self>, id: &str) -> bool {
+        let is_torrent = {
+            let tasks = self.tasks.read().await;
+            tasks.get(id).and_then(|c| c.status.file_type.clone()) == Some("torrent".to_string())
+        };
+
+        if is_torrent {
+            let handle = {
+                let mut handles = self.torrent_handles.write().await;
+                handles.remove(id)
+            };
+            if let Some(handle) = handle {
+                if let Ok(session) = self.get_torrent_session().await {
+                    let _ = session
+                        .delete(TorrentIdOrHash::Id(handle.id()), false)
+                        .await;
+                }
+            }
+        }
+
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.remove(id) {
                 control.token.cancel();
 
-                // Attempt to move files to trash or delete permanently
-                for file in &control.status.files {
-                    let path = std::path::Path::new(&file.path);
-                    let filename = path.file_name().unwrap_or_default().to_string_lossy();
-                    let dir = path
-                        .parent()
-                        .unwrap_or_else(|| std::path::Path::new(""))
-                        .to_string_lossy();
-                    let part_path_str = format!("{}/.{}.pincer", dir, filename);
-                    let part_path = std::path::Path::new(&part_path_str);
+                // Move files to trash in a background thread to prevent blocking the RPC loop
+                let is_torrent_task = control.status.file_type.as_deref() == Some("torrent");
+                let status = control.status.status.clone();
+                let is_resumable = control.status.is_resumable;
+                let files = control.status.files.clone();
+                let dir = control.status.dir.clone();
 
-                    let paths_to_remove = [path, part_path];
+                let torrent_folder_or_file = if is_torrent_task {
+                    if let Some(bt) = &control.status.bittorrent {
+                        let path = std::path::PathBuf::from(&dir).join(&bt.info.name);
+                        Some((path, bt.mode == "multi"))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
 
-                    for p in paths_to_remove {
-                        if p.exists() {
-                            if control.status.is_resumable == Some(false)
-                                && control.status.status != "complete"
-                            {
-                                if let Err(e) = std::fs::remove_file(p) {
-                                    eprintln!(
-                                        "[ERROR] Failed to permanently remove file '{}': {}",
-                                        p.display(),
-                                        e
-                                    );
-                                } else {
-                                    println!("[INFO] Permanently removed: {}", p.display());
+                tokio::task::spawn_blocking(move || {
+                    if is_torrent_task {
+                        let mut resolved_torrent_delete = false;
+                        if let Some((path, is_dir)) = torrent_folder_or_file.as_ref() {
+                            if *is_dir && path.exists() {
+                                resolved_torrent_delete = true;
+                                let trash_res = std::panic::catch_unwind(|| trash::delete(path));
+                                match trash_res {
+                                    Ok(Ok(())) => {
+                                        println!(
+                                            "[INFO] Moved torrent path to trash: {}",
+                                            path.display()
+                                        );
+                                    }
+                                    _ => {
+                                        eprintln!("[WARNING] Failed to move torrent to trash. Deleting permanently: {}", path.display());
+                                        let _ = std::fs::remove_dir_all(path);
+                                    }
                                 }
-                            } else {
-                                if let Err(e) = trash::delete(p) {
-                                    eprintln!(
-                                        "[ERROR] Failed to move file to trash '{}': {}",
-                                        p.display(),
-                                        e
-                                    );
-                                } else {
-                                    println!("[INFO] Moved to trash: {}", p.display());
+                            }
+                        }
+
+                        if !resolved_torrent_delete {
+                            if !files.is_empty() {
+                                for file in &files {
+                                    let path = std::path::Path::new(&file.path);
+                                    if path.exists() {
+                                        let trash_res =
+                                            std::panic::catch_unwind(|| trash::delete(path));
+                                        match trash_res {
+                                            Ok(Ok(())) => {
+                                                println!(
+                                                    "[INFO] Moved torrent file to trash: {}",
+                                                    path.display()
+                                                );
+                                            }
+                                            _ => {
+                                                eprintln!("[WARNING] Failed to move torrent file to trash. Deleting permanently: {}", path.display());
+                                                let _ = std::fs::remove_file(path);
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if let Some((path, _)) = torrent_folder_or_file.as_ref() {
+                                if path.exists() {
+                                    let trash_res =
+                                        std::panic::catch_unwind(|| trash::delete(path));
+                                    match trash_res {
+                                        Ok(Ok(())) => {
+                                            println!(
+                                                "[INFO] Moved torrent file to trash (fallback): {}",
+                                                path.display()
+                                            );
+                                        }
+                                        _ => {
+                                            eprintln!("[WARNING] Failed to move torrent file to trash (fallback). Deleting permanently: {}", path.display());
+                                            let _ = std::fs::remove_file(path);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        for file in &files {
+                            let path = std::path::Path::new(&file.path);
+                            let filename = path.file_name().unwrap_or_default().to_string_lossy();
+                            let file_dir = path
+                                .parent()
+                                .unwrap_or_else(|| std::path::Path::new(""))
+                                .to_string_lossy();
+                            let bundle_path_str = format!("{}/{}.download", file_dir, filename);
+                            let bundle_path = std::path::Path::new(&bundle_path_str);
+                            let part_path_str = format!("{}/.{}.pincer", file_dir, filename);
+                            let part_path = std::path::Path::new(&part_path_str);
+
+                            let paths_to_remove = vec![
+                                path.to_path_buf(),
+                                bundle_path.to_path_buf(),
+                                part_path.to_path_buf(),
+                            ];
+                            for p in paths_to_remove {
+                                if p.exists() {
+                                    let is_dir = p.is_dir();
+                                    if is_resumable == Some(false) && status != "complete" {
+                                        if is_dir {
+                                            let _ = std::fs::remove_dir_all(&p);
+                                        } else {
+                                            let _ = std::fs::remove_file(&p);
+                                        }
+                                    } else {
+                                        let trash_res =
+                                            std::panic::catch_unwind(|| trash::delete(&p));
+                                        match trash_res {
+                                            Ok(Ok(())) => {
+                                                println!(
+                                                    "[INFO] Moved file/directory to trash: {}",
+                                                    p.display()
+                                                );
+                                            }
+                                            _ => {
+                                                eprintln!("[WARNING] Failed to move file/directory to trash. Deleting permanently: {}", p.display());
+                                                if is_dir {
+                                                    let _ = std::fs::remove_dir_all(&p);
+                                                } else {
+                                                    let _ = std::fs::remove_file(&p);
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                }
+                });
                 true
             } else {
                 false
@@ -1086,6 +1691,15 @@ impl DownloadManager {
     }
 
     pub async fn force_remove_task(self: &Arc<Self>, id: &str) -> bool {
+        let is_torrent = {
+            let tasks = self.tasks.read().await;
+            tasks.get(id).and_then(|c| c.status.file_type.clone()) == Some("torrent".to_string())
+        };
+
+        if is_torrent {
+            return self.remove_task_and_file(id).await;
+        }
+
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.remove(id) {
@@ -1295,14 +1909,17 @@ impl DownloadManager {
     }
 
     fn calculate_current_speed(&self, control: &TaskControl) -> u64 {
+        let reported_speed = control.status.download_speed.parse::<u64>().unwrap_or(0);
+        if control.status.file_type == Some("torrent".to_string()) {
+            return reported_speed;
+        }
+
         if control.status.status != "active" && control.status.status != "converting" {
             return 0;
         }
 
         let now = std::time::Instant::now();
         let elapsed = now.duration_since(control.last_update_time).as_secs_f64();
-
-        let reported_speed = control.status.download_speed.parse::<u64>().unwrap_or(0);
 
         // If we recently got a chunk (within 1s), use the reported speed
         if elapsed <= 1.0 {
@@ -1331,6 +1948,59 @@ impl DownloadManager {
     /// 2. Universal Fallback: If a web page is provided, it attempts to scrape OpenGraph tags
     ///    or embedded JSON payloads (e.g., Next.js) to find the actual media URL.
     pub async fn resolve_url(&self, url: String) -> Result<crate::models::ResolveResponse, String> {
+        let url_trimmed = url.trim().to_string();
+        let url_lower = url_trimmed.to_lowercase();
+
+        // A. Handle magnet link resolution via list_only
+        if url_lower.starts_with("magnet:?") {
+            let session = self.get_torrent_session().await?;
+            let torrent_source = librqbit::AddTorrent::from_url(url_trimmed.clone());
+            let opts = librqbit::AddTorrentOptions {
+                list_only: true,
+                ..Default::default()
+            };
+
+            // Timeout magnet resolution after 15 seconds to prevent hanging the RPC connection
+            let add_res_timeout = tokio::time::timeout(
+                std::time::Duration::from_secs(15),
+                session.add_torrent(torrent_source, Some(opts)),
+            )
+            .await;
+
+            let add_res = match add_res_timeout {
+                Ok(res) => res.map_err(|e| format!("Failed to resolve magnet: {:?}", e))?,
+                Err(_) => {
+                    // Fallback to offline parsing on timeout
+                    let parsed = librqbit::Magnet::parse(&url_trimmed)
+                        .map_err(|e| format!("Invalid magnet URL: {:?}", e))?;
+                    let name = parsed.name.clone();
+                    return Ok(crate::models::ResolveResponse {
+                        url: url_trimmed,
+                        filename: name,
+                        total_size: None,
+                        file_type: Some("torrent".to_string()),
+                        is_resumable: Some(true),
+                        torrent_files: None,
+                    });
+                }
+            };
+
+            return match add_res {
+                librqbit::AddTorrentResponse::ListOnly(res) => {
+                    let (name, total_size, files) = self.parse_list_only_response(&res.info);
+                    Ok(crate::models::ResolveResponse {
+                        url: url_trimmed,
+                        filename: name,
+                        total_size,
+                        file_type: Some("torrent".to_string()),
+                        is_resumable: Some(true),
+                        torrent_files: Some(files),
+                    })
+                }
+                _ => Err("Expected ListOnly response from magnet link resolver".to_string()),
+            };
+        }
+
         let global_opts = self.global_options.read().await;
 
         let mut builder = reqwest::Client::builder();
@@ -1348,6 +2018,48 @@ impl DownloadManager {
         }
 
         let client = builder.build().map_err(|e| e.to_string())?;
+
+        // B. Handle HTTP .torrent link resolution directly
+        let is_direct_torrent = url_lower
+            .split('?')
+            .next()
+            .unwrap_or("")
+            .ends_with(".torrent");
+        if is_direct_torrent {
+            let response = client
+                .get(&url_trimmed)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            let final_url = response.url().to_string();
+            let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+
+            let session = self.get_torrent_session().await?;
+            let torrent_source = librqbit::AddTorrent::from_bytes(bytes.to_vec());
+            let opts = librqbit::AddTorrentOptions {
+                list_only: true,
+                ..Default::default()
+            };
+            let add_res = session
+                .add_torrent(torrent_source, Some(opts))
+                .await
+                .map_err(|e| format!("Failed to resolve torrent link: {:?}", e))?;
+
+            return match add_res {
+                librqbit::AddTorrentResponse::ListOnly(res) => {
+                    let (name, total_size, files) = self.parse_list_only_response(&res.info);
+                    Ok(crate::models::ResolveResponse {
+                        url: final_url,
+                        filename: name,
+                        total_size,
+                        file_type: Some("torrent".to_string()),
+                        is_resumable: Some(true),
+                        torrent_files: Some(files),
+                    })
+                }
+                _ => Err("Expected ListOnly response from torrent link resolution".to_string()),
+            };
+        }
 
         // 1. Standard Redirect Resolution (Current Logic)
         let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
@@ -1391,6 +2103,43 @@ impl DownloadManager {
                 }
             });
 
+        // C. Handle standard response that redirects to a .torrent file
+        let is_torrent = content_type.contains("application/x-bittorrent")
+            || final_url
+                .split('?')
+                .next()
+                .unwrap_or("")
+                .ends_with(".torrent");
+
+        if is_torrent {
+            let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+            let session = self.get_torrent_session().await?;
+            let torrent_source = librqbit::AddTorrent::from_bytes(bytes.to_vec());
+            let opts = librqbit::AddTorrentOptions {
+                list_only: true,
+                ..Default::default()
+            };
+            let add_res = session
+                .add_torrent(torrent_source, Some(opts))
+                .await
+                .map_err(|e| format!("Failed to resolve torrent link: {:?}", e))?;
+
+            return match add_res {
+                librqbit::AddTorrentResponse::ListOnly(res) => {
+                    let (name, total_size, files) = self.parse_list_only_response(&res.info);
+                    Ok(crate::models::ResolveResponse {
+                        url: final_url,
+                        filename: name,
+                        total_size,
+                        file_type: Some("torrent".to_string()),
+                        is_resumable: Some(true),
+                        torrent_files: Some(files),
+                    })
+                }
+                _ => Err("Expected ListOnly response from torrent link resolver".to_string()),
+            };
+        }
+
         // If the result is already a direct video file, return it
         if content_type.contains("video/")
             || final_url.split('?').next().unwrap_or("").ends_with(".mp4")
@@ -1413,6 +2162,7 @@ impl DownloadManager {
                 total_size,
                 file_type: Some(content_type.to_string()),
                 is_resumable,
+                torrent_files: None,
             });
         }
 
@@ -1440,6 +2190,7 @@ impl DownloadManager {
                     total_size: None,
                     file_type: Some("video/mp4".to_string()),
                     is_resumable: None,
+                    torrent_files: None,
                 });
             }
 
@@ -1493,6 +2244,7 @@ impl DownloadManager {
                     total_size: None,
                     file_type: Some(format!("video/{}", ext)),
                     is_resumable: None,
+                    torrent_files: None,
                 });
             }
 
@@ -1517,6 +2269,7 @@ impl DownloadManager {
                     total_size: None,
                     file_type: None,
                     is_resumable: None,
+                    torrent_files: None,
                 });
             }
         }
@@ -1568,7 +2321,90 @@ impl DownloadManager {
                 Some(content_type.to_string())
             },
             is_resumable,
+            torrent_files: None,
         })
+    }
+
+    fn parse_list_only_response(
+        &self,
+        info: &librqbit::TorrentMetaV1Info<librqbit::ByteBufOwned>,
+    ) -> (
+        Option<String>,
+        Option<i64>,
+        Vec<crate::models::TorrentResolveFile>,
+    ) {
+        let name = info
+            .name
+            .as_ref()
+            .map(|n| String::from_utf8_lossy(n.as_ref()).into_owned());
+
+        let mut files_resolved = Vec::new();
+        let mut total_size: u64 = 0;
+
+        if let Some(files) = &info.files {
+            for (idx, f) in files.iter().enumerate() {
+                let relative_path = f
+                    .path
+                    .iter()
+                    .map(|p| String::from_utf8_lossy(p.as_ref()).into_owned())
+                    .collect::<Vec<String>>()
+                    .join("/");
+                files_resolved.push(crate::models::TorrentResolveFile {
+                    index: idx,
+                    path: relative_path,
+                    length: f.length,
+                });
+                total_size += f.length;
+            }
+        } else {
+            // Single file mode
+            let file_name = name.clone().unwrap_or_else(|| "download".to_string());
+            let length = info.length.unwrap_or(0);
+            files_resolved.push(crate::models::TorrentResolveFile {
+                index: 0,
+                path: file_name,
+                length,
+            });
+            total_size = length;
+        }
+
+        (name, Some(total_size as i64), files_resolved)
+    }
+
+    pub async fn resolve_torrent_base64(
+        &self,
+        base64_str: String,
+    ) -> Result<crate::models::ResolveResponse, String> {
+        use base64::{engine::general_purpose, Engine as _};
+        let decoded = general_purpose::STANDARD
+            .decode(base64_str.trim())
+            .map_err(|e| format!("Invalid base64: {:?}", e))?;
+
+        let session = self.get_torrent_session().await?;
+        let torrent_source = librqbit::AddTorrent::from_bytes(decoded);
+        let opts = librqbit::AddTorrentOptions {
+            list_only: true,
+            ..Default::default()
+        };
+        let add_res = session
+            .add_torrent(torrent_source, Some(opts))
+            .await
+            .map_err(|e| format!("Failed to resolve torrent: {:?}", e))?;
+
+        match add_res {
+            librqbit::AddTorrentResponse::ListOnly(res) => {
+                let (name, total_size, files) = self.parse_list_only_response(&res.info);
+                Ok(crate::models::ResolveResponse {
+                    url: "".to_string(),
+                    filename: name,
+                    total_size,
+                    file_type: Some("torrent".to_string()),
+                    is_resumable: Some(true),
+                    torrent_files: Some(files),
+                })
+            }
+            _ => Err("Expected ListOnly response from base64 torrent resolver".to_string()),
+        }
     }
 
     pub async fn perform_format_conversion(

@@ -28,6 +28,22 @@ pub struct RPCError {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorrentInfoInner {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorrentInfo {
+    #[serde(rename = "announceList")]
+    pub announce_list: Vec<Vec<String>>,
+    pub comment: Option<String>,
+    #[serde(rename = "creationDate")]
+    pub creation_date: Option<u64>,
+    pub mode: String, // "single" or "multi"
+    pub info: TorrentInfoInner,
+}
+
 /// Contains all status metadata for an active, paused, or completed download task.
 /// Includes progress, speed, and file information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +64,16 @@ pub struct TaskStatus {
     pub is_resumable: Option<bool>,
     pub dir: String,
     pub files: Vec<FileData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bittorrent: Option<TorrentInfo>,
+    #[serde(rename = "infoHash")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub info_hash: Option<String>,
+    #[serde(rename = "numSeeders")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub num_seeders: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +115,13 @@ pub struct RPCNotification {
 pub struct NotificationParam {
     pub gid: String,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorrentResolveFile {
+    pub index: usize,
+    pub path: String,
+    pub length: u64,
+}
+
 /// The result of resolving a URL, providing metadata before the download begins.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolveResponse {
@@ -100,6 +133,9 @@ pub struct ResolveResponse {
     pub file_type: Option<String>,
     #[serde(rename = "isResumable")]
     pub is_resumable: Option<bool>,
+    #[serde(rename = "torrentFiles")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub torrent_files: Option<Vec<TorrentResolveFile>>,
 }
 
 /// Represents a serialized task saved to disk across sessions in `pincer.session`.
@@ -118,6 +154,8 @@ pub struct SessionTask {
     pub total_length: Option<u64>,
     #[serde(default)]
     pub completed_length: Option<u64>,
+    #[serde(default)]
+    pub file_type: Option<String>,
 }
 
 /// Represents the internal state of an active/paused download, stored within the .download bundle.

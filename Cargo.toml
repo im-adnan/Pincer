@@ -35,3 +35,5 @@ base64 = "0.22"
 sha2 = "0.10"
 hex = "0.4"
 xattr = "1.3"
+librqbit = { version = "8.1.1", default-features = false, features = ["rust-tls"] }
+

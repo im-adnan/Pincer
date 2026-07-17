@@ -56,6 +56,9 @@ pub struct TaskStatus {
     pub completed_length: String,
     #[serde(rename = "downloadSpeed")]
     pub download_speed: String,
+    #[serde(rename = "uploadSpeed")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload_speed: Option<String>,
     #[serde(rename = "workerProgress")]
     pub worker_progress: Vec<u64>,
     #[serde(rename = "fileType")]

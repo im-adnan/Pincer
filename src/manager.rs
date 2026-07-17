@@ -164,6 +164,7 @@ impl DownloadManager {
             total_length: "0".to_string(),
             completed_length: "0".to_string(),
             download_speed: "0".to_string(),
+            upload_speed: None,
             worker_progress: vec![],
             file_type: Some("torrent".to_string()),
             is_resumable: Some(true),
@@ -230,10 +231,74 @@ impl DownloadManager {
         let session_clone = session.clone();
         let dir_clone = dir.clone();
 
+        let torrent_source_clone = match &torrent_source {
+            librqbit::AddTorrent::Url(cow) => librqbit::AddTorrent::Url(cow.clone()),
+            librqbit::AddTorrent::TorrentFileBytes(bytes) => {
+                librqbit::AddTorrent::TorrentFileBytes(bytes.clone())
+            }
+        };
+
         tokio::spawn(async move {
+            let mut resolved_name = initial_name.clone();
+            let mut is_multi = false;
+
+            match &torrent_source_clone {
+                librqbit::AddTorrent::TorrentFileBytes(bytes) => {
+                    if let Ok(t) = librqbit::torrent_from_bytes::<&[u8]>(bytes.as_ref()) {
+                        is_multi = t.info.files.is_some();
+                        if let Some(name_buf) = &t.info.name {
+                            resolved_name = String::from_utf8_lossy(name_buf).into_owned();
+                        }
+                    }
+                }
+                librqbit::AddTorrent::Url(url) => {
+                    let list_opts = librqbit::AddTorrentOptions {
+                        list_only: true,
+                        ..Default::default()
+                    };
+                    let source_for_add = librqbit::AddTorrent::Url(url.clone());
+                    if let Ok(librqbit::AddTorrentResponse::ListOnly(res)) = session_clone
+                        .add_torrent(source_for_add, Some(list_opts))
+                        .await
+                    {
+                        is_multi = res.info.files.is_some();
+                        if let Some(name_buf) = &res.info.name {
+                            resolved_name = String::from_utf8_lossy(name_buf).into_owned();
+                        }
+                    }
+                }
+            }
+
+            let folder_name = if !is_multi {
+                let path = std::path::Path::new(&resolved_name);
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| resolved_name.clone())
+            } else {
+                resolved_name.clone()
+            };
+
+            let folder_name = folder_name.replace(' ', "-").replace('.', "_");
+
+            let final_path = std::path::PathBuf::from(&dir_clone).join(&folder_name);
+            let _ = std::fs::create_dir_all(&final_path);
+            let final_dir = final_path.to_string_lossy().to_string();
+
+            {
+                let mut tasks = manager_clone.tasks.write().await;
+                if let Some(control) = tasks.get_mut(&id_clone) {
+                    control.status.dir = final_dir.clone();
+                    control.options.insert("dir".to_string(), final_dir.clone());
+                    control
+                        .options
+                        .insert("out".to_string(), resolved_name.clone());
+                }
+            }
+
             let opts = AddTorrentOptions {
                 overwrite: true,
-                output_folder: Some(dir_clone),
+                output_folder: Some(final_dir),
                 only_files,
                 ..Default::default()
             };
@@ -314,9 +379,11 @@ impl DownloadManager {
                     let finished = stats.finished && has_metadata;
 
                     let mut download_speed = 0;
+                    let mut upload_speed = 0;
                     let mut peer_count = 0;
                     if let Some(live) = &stats.live {
                         download_speed = (live.download_speed.mbps * 1024.0 * 1024.0) as u64;
+                        upload_speed = (live.upload_speed.mbps * 1024.0 * 1024.0) as u64;
                         peer_count = live.snapshot.peer_stats.live;
                     }
 
@@ -332,9 +399,6 @@ impl DownloadManager {
                             if let Some(files) = &meta.info.files {
                                 for f in files {
                                     let mut file_path = parent_dir.clone();
-                                    if let Some(name_buf) = &meta.info.name {
-                                        file_path.push(String::from_utf8_lossy(name_buf.as_ref()).as_ref());
-                                    }
                                     for component in &f.path {
                                         file_path.push(String::from_utf8_lossy(component.as_ref()).as_ref());
                                     }
@@ -385,6 +449,7 @@ impl DownloadManager {
                             control.status.total_length = total_bytes.to_string();
                             control.status.completed_length = progress_bytes.to_string();
                             control.status.download_speed = download_speed.to_string();
+                            control.status.upload_speed = Some(upload_speed.to_string());
                             control.status.num_seeders = Some(peer_count as u32);
                             control.status.bittorrent = bittorrent;
                             if !files.is_empty() {
@@ -474,7 +539,8 @@ impl DownloadManager {
             let mut opt_total = None;
             let mut opt_completed = None;
 
-            if saved_status == "complete" || saved_status == "error" {
+            let is_torrent = status.file_type.as_deref() == Some("torrent");
+            if saved_status == "complete" || saved_status == "error" || is_torrent {
                 opt_url = Some(first_uri);
                 opt_total = Some(status.total_length.parse::<u64>().unwrap_or(0));
                 opt_completed = Some(status.completed_length.parse::<u64>().unwrap_or(0));
@@ -576,7 +642,8 @@ impl DownloadManager {
                     let mut task_status = task.status.clone();
                     let mut bundle_state_opt = None;
 
-                    if task_status != "complete" && task_status != "error" {
+                    let is_torrent = task.file_type.as_deref() == Some("torrent");
+                    if task_status != "complete" && task_status != "error" && !is_torrent {
                         let state_path =
                             format!("{}/{}.download/state.json", task.save_path, task.filename);
                         if let Ok(json_str) = std::fs::read_to_string(&state_path) {
@@ -626,6 +693,7 @@ impl DownloadManager {
                         total_length: total_len.to_string(),
                         completed_length: comp_len.to_string(),
                         download_speed: "0".to_string(),
+                        upload_speed: None,
                         worker_progress: wp,
                         file_type,
                         is_resumable: Some(true),
@@ -801,6 +869,7 @@ impl DownloadManager {
             total_length: "0".to_string(), // Will be updated by task.start
             completed_length,
             download_speed: "0".to_string(),
+            upload_speed: None,
             worker_progress: vec![0; threads],
             file_type: None,
             is_resumable: None,
@@ -1189,12 +1258,23 @@ impl DownloadManager {
     }
 
     pub async fn pause_task(self: &Arc<Self>, id: &str) -> bool {
-        let is_torrent = {
+        let (is_torrent, is_completed_torrent) = {
             let tasks = self.tasks.read().await;
-            tasks.get(id).and_then(|c| c.status.file_type.clone()) == Some("torrent".to_string())
+            if let Some(c) = tasks.get(id) {
+                let is_tor = c.status.file_type.as_deref() == Some("torrent");
+                let completed = c.status.completed_length.parse::<u64>().unwrap_or(0);
+                let total = c.status.total_length.parse::<u64>().unwrap_or(0);
+                let is_comp = total > 0 && completed >= total;
+                (is_tor, is_comp)
+            } else {
+                (false, false)
+            }
         };
 
         if is_torrent {
+            if is_completed_torrent {
+                return false;
+            }
             let handle = {
                 let handles = self.torrent_handles.read().await;
                 handles.get(id).cloned()
@@ -1211,9 +1291,8 @@ impl DownloadManager {
             if let Some(control) = tasks.get_mut(id) {
                 control.token.cancel();
                 control.status.status = "paused".to_string();
-                control
-                    .options
-                    .insert("keep-seeding".to_string(), "false".to_string());
+                control.status.download_speed = "0".to_string();
+                control.status.upload_speed = Some("0".to_string());
                 // Dispatch pause event immediately for UI responsiveness
                 let _ = self
                     .tx
@@ -1234,12 +1313,24 @@ impl DownloadManager {
         {
             let mut tasks = self.tasks.write().await;
             for (gid, control) in tasks.iter_mut() {
+                let is_completed_torrent = control.status.file_type.as_deref() == Some("torrent") && {
+                    let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
+                    let total = control.status.total_length.parse::<u64>().unwrap_or(0);
+                    total > 0 && completed >= total
+                };
+
+                if is_completed_torrent {
+                    continue;
+                }
+
                 if control.status.status == "active"
                     || control.status.status == "converting"
                     || control.status.status == "waiting"
                 {
                     control.token.cancel();
                     control.status.status = "paused".to_string();
+                    control.status.download_speed = "0".to_string();
+                    control.status.upload_speed = Some("0".to_string());
                     let _ = self
                         .tx
                         .send(self.build_notification("pin.onDownloadPause", gid));
@@ -1251,12 +1342,23 @@ impl DownloadManager {
     }
 
     pub async fn unpause_task(self: &Arc<Self>, id: &str) -> bool {
-        let is_torrent = {
+        let (is_torrent, is_completed_torrent) = {
             let tasks = self.tasks.read().await;
-            tasks.get(id).and_then(|c| c.status.file_type.clone()) == Some("torrent".to_string())
+            if let Some(c) = tasks.get(id) {
+                let is_tor = c.status.file_type.as_deref() == Some("torrent");
+                let completed = c.status.completed_length.parse::<u64>().unwrap_or(0);
+                let total = c.status.total_length.parse::<u64>().unwrap_or(0);
+                let is_comp = total > 0 && completed >= total;
+                (is_tor, is_comp)
+            } else {
+                (false, false)
+            }
         };
 
         if is_torrent {
+            if is_completed_torrent {
+                return false;
+            }
             let handle = {
                 let handles = self.torrent_handles.read().await;
                 handles.get(id).cloned()
@@ -1271,9 +1373,6 @@ impl DownloadManager {
                                 if let Some(control) = tasks.get_mut(id) {
                                     control.status.status = "active".to_string();
                                     control.token = token.clone();
-                                    control
-                                        .options
-                                        .insert("keep-seeding".to_string(), "true".to_string());
                                 }
                             }
 
@@ -1425,10 +1524,20 @@ impl DownloadManager {
             tasks
                 .iter()
                 .filter(|(_, c)| {
-                    c.status.status == "paused"
-                        || c.status.status == "waiting"
-                        || c.status.status == "error"
-                        || c.status.status == "removed"
+                    let is_completed_torrent = c.status.file_type.as_deref() == Some("torrent") && {
+                        let completed = c.status.completed_length.parse::<u64>().unwrap_or(0);
+                        let total = c.status.total_length.parse::<u64>().unwrap_or(0);
+                        total > 0 && completed >= total
+                    };
+
+                    if is_completed_torrent {
+                        false
+                    } else {
+                        c.status.status == "paused"
+                            || c.status.status == "waiting"
+                            || c.status.status == "error"
+                            || c.status.status == "removed"
+                    }
                 })
                 .map(|(id, _)| id.clone())
                 .collect()
@@ -1554,12 +1663,7 @@ impl DownloadManager {
                 let dir = control.status.dir.clone();
 
                 let torrent_folder_or_file = if is_torrent_task {
-                    if let Some(bt) = &control.status.bittorrent {
-                        let path = std::path::PathBuf::from(&dir).join(&bt.info.name);
-                        Some((path, bt.mode == "multi"))
-                    } else {
-                        None
-                    }
+                    Some((std::path::PathBuf::from(&dir), true))
                 } else {
                     None
                 };
@@ -1568,7 +1672,13 @@ impl DownloadManager {
                     if is_torrent_task {
                         let mut resolved_torrent_delete = false;
                         if let Some((path, is_dir)) = torrent_folder_or_file.as_ref() {
-                            if *is_dir && path.exists() {
+                            let mut is_safe = true;
+                            if let Ok(home) = std::env::var("HOME").map(std::path::PathBuf::from) {
+                                if path == &home || path == &home.join("Downloads") {
+                                    is_safe = false;
+                                }
+                            }
+                            if is_safe && *is_dir && path.exists() {
                                 resolved_torrent_delete = true;
                                 let trash_res = std::panic::catch_unwind(|| trash::delete(path));
                                 match trash_res {
@@ -1763,6 +1873,7 @@ impl DownloadManager {
     pub async fn get_global_stat(&self) -> GlobalStat {
         let tasks = self.tasks.read().await;
         let mut total_download_speed: u64 = 0;
+        let mut total_upload_speed: u64 = 0;
         let mut active = 0;
         let mut waiting = 0;
         let mut stopped = 0;
@@ -1772,6 +1883,9 @@ impl DownloadManager {
                 "active" | "converting" => {
                     active += 1;
                     total_download_speed += self.calculate_current_speed(control);
+                    if let Some(up_speed) = &control.status.upload_speed {
+                        total_upload_speed += up_speed.parse::<u64>().unwrap_or(0);
+                    }
                 }
                 "waiting" | "paused" => waiting += 1,
                 "complete" | "error" | "removed" => stopped += 1,
@@ -1795,7 +1909,7 @@ impl DownloadManager {
 
         GlobalStat {
             download_speed: total_download_speed.to_string(),
-            upload_speed: "0".to_string(),
+            upload_speed: total_upload_speed.to_string(),
             num_active: active.to_string(),
             num_waiting: waiting.to_string(),
             num_stopped: stopped.to_string(),
@@ -1852,7 +1966,12 @@ impl DownloadManager {
         self.global_options.read().await.clone()
     }
 
-    pub async fn change_option(&self, id: &str, options: HashMap<String, String>) -> bool {
+    pub async fn change_option(
+        self: &Arc<Self>,
+        id: &str,
+        options: HashMap<String, String>,
+    ) -> bool {
+        let mut change_seeding_to = None;
         let res = {
             let mut tasks = self.tasks.write().await;
             if let Some(control) = tasks.get_mut(id) {
@@ -1867,6 +1986,16 @@ impl DownloadManager {
                             file.path = format!("{}/{}", v, file_name);
                         }
                     }
+                    if k == "keep-seeding" {
+                        let is_completed_torrent = control.status.file_type.as_deref() == Some("torrent") && {
+                            let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
+                            let total = control.status.total_length.parse::<u64>().unwrap_or(0);
+                            total > 0 && completed >= total
+                        };
+                        if is_completed_torrent {
+                            change_seeding_to = Some(v == "true");
+                        }
+                    }
                     control.options.insert(k, v);
                 }
                 true
@@ -1874,6 +2003,43 @@ impl DownloadManager {
                 false
             }
         };
+
+        if let Some(should_seed) = change_seeding_to {
+            let handle = {
+                let handles = self.torrent_handles.read().await;
+                handles.get(id).cloned()
+            };
+            if let Some(handle) = handle {
+                if let Ok(session) = self.get_torrent_session().await {
+                    if should_seed {
+                        if let Ok(_) = session.unpause(&handle).await {
+                            let mut tasks = self.tasks.write().await;
+                            if let Some(control) = tasks.get_mut(id) {
+                                control.status.status = "active".to_string();
+                                control.token = CancellationToken::new();
+                                let token_clone = control.token.clone();
+                                let manager_clone = self.clone();
+                                let id_clone = id.to_string();
+                                let handle_clone = handle.clone();
+                                tokio::spawn(async move {
+                                    manager_clone
+                                        .run_torrent_stats_loop(id_clone, handle_clone, token_clone)
+                                        .await;
+                                });
+                            }
+                        }
+                    } else {
+                        let _ = session.pause(&handle).await;
+                        let mut tasks = self.tasks.write().await;
+                        if let Some(control) = tasks.get_mut(id) {
+                            control.token.cancel();
+                            control.status.status = "paused".to_string();
+                        }
+                    }
+                }
+            }
+        }
+
         if res {
             self.save_session().await;
         }

@@ -477,6 +477,60 @@ impl DownloadManager {
                     let _ = self.tx.send(self.build_notification("pin.onDownloadProgress", &id));
 
                     if task_finished {
+                        let mut unselected_files = Vec::new();
+                        {
+                            let tasks = self.tasks.read().await;
+                            if let Some(control) = tasks.get(&id) {
+                                if let Some(files_str) = control.options.get("select-files") {
+                                    let selected_indices: std::collections::HashSet<usize> = files_str
+                                        .split(',')
+                                        .filter_map(|s| s.parse::<usize>().ok())
+                                        .collect();
+                                    
+                                    if let Some(meta) = &*handle.metadata.load() {
+                                        let parent_dir = std::path::PathBuf::from(&dir);
+                                        if let Some(files) = &meta.info.files {
+                                            for (idx, f) in files.iter().enumerate() {
+                                                if !selected_indices.contains(&idx) {
+                                                    let mut file_path = parent_dir.clone();
+                                                    for component in &f.path {
+                                                        file_path.push(String::from_utf8_lossy(component.as_ref()).as_ref());
+                                                    }
+                                                    unselected_files.push(file_path);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        for path in unselected_files {
+                            if path.is_file() {
+                                if let Err(e) = std::fs::remove_file(&path) {
+                                    eprintln!("[PINCER ERR] Failed to delete unselected torrent file {:?}: {:?}", path, e);
+                                } else {
+                                    println!("[PINCER INFO] Deleted unselected torrent file {:?}", path);
+                                    let mut parent = path.parent();
+                                    let torrent_dir = std::path::Path::new(&dir);
+                                    while let Some(p) = parent {
+                                        if p == torrent_dir {
+                                            break;
+                                        }
+                                        if p.read_dir().map(|mut i| i.next().is_none()).unwrap_or(false) {
+                                            if let Err(e) = std::fs::remove_dir(p) {
+                                                eprintln!("[PINCER ERR] Failed to delete empty directory {:?}: {:?}", p, e);
+                                                break;
+                                            }
+                                            parent = p.parent();
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         let _ = self.tx.send(self.build_notification("pin.onDownloadComplete", &id));
                         break;
                     }

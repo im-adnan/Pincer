@@ -486,7 +486,7 @@ impl DownloadManager {
                                         .split(',')
                                         .filter_map(|s| s.parse::<usize>().ok())
                                         .collect();
-                                    
+
                                     if let Some(meta) = &*handle.metadata.load() {
                                         let parent_dir = std::path::PathBuf::from(&dir);
                                         if let Some(files) = &meta.info.files {
@@ -1367,11 +1367,12 @@ impl DownloadManager {
         {
             let mut tasks = self.tasks.write().await;
             for (gid, control) in tasks.iter_mut() {
-                let is_completed_torrent = control.status.file_type.as_deref() == Some("torrent") && {
-                    let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
-                    let total = control.status.total_length.parse::<u64>().unwrap_or(0);
-                    total > 0 && completed >= total
-                };
+                let is_completed_torrent = control.status.file_type.as_deref() == Some("torrent")
+                    && {
+                        let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
+                        let total = control.status.total_length.parse::<u64>().unwrap_or(0);
+                        total > 0 && completed >= total
+                    };
 
                 if is_completed_torrent {
                     continue;
@@ -1578,11 +1579,12 @@ impl DownloadManager {
             tasks
                 .iter()
                 .filter(|(_, c)| {
-                    let is_completed_torrent = c.status.file_type.as_deref() == Some("torrent") && {
-                        let completed = c.status.completed_length.parse::<u64>().unwrap_or(0);
-                        let total = c.status.total_length.parse::<u64>().unwrap_or(0);
-                        total > 0 && completed >= total
-                    };
+                    let is_completed_torrent = c.status.file_type.as_deref() == Some("torrent")
+                        && {
+                            let completed = c.status.completed_length.parse::<u64>().unwrap_or(0);
+                            let total = c.status.total_length.parse::<u64>().unwrap_or(0);
+                            total > 0 && completed >= total
+                        };
 
                     if is_completed_torrent {
                         false
@@ -2041,11 +2043,13 @@ impl DownloadManager {
                         }
                     }
                     if k == "keep-seeding" {
-                        let is_completed_torrent = control.status.file_type.as_deref() == Some("torrent") && {
-                            let completed = control.status.completed_length.parse::<u64>().unwrap_or(0);
-                            let total = control.status.total_length.parse::<u64>().unwrap_or(0);
-                            total > 0 && completed >= total
-                        };
+                        let is_completed_torrent =
+                            control.status.file_type.as_deref() == Some("torrent") && {
+                                let completed =
+                                    control.status.completed_length.parse::<u64>().unwrap_or(0);
+                                let total = control.status.total_length.parse::<u64>().unwrap_or(0);
+                                total > 0 && completed >= total
+                            };
                         if is_completed_torrent {
                             change_seeding_to = Some(v == "true");
                         }
@@ -2066,7 +2070,7 @@ impl DownloadManager {
             if let Some(handle) = handle {
                 if let Ok(session) = self.get_torrent_session().await {
                     if should_seed {
-                        if let Ok(_) = session.unpause(&handle).await {
+                        if session.unpause(&handle).await.is_ok() {
                             let mut tasks = self.tasks.write().await;
                             if let Some(control) = tasks.get_mut(id) {
                                 control.status.status = "active".to_string();

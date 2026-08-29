@@ -8,11 +8,23 @@
 
 **Pincer** is a modern, ultra-high-performance download engine designed to get files to your computer as fast as your internet connection allows. 
 
-Whether you're downloading a standard web file, a massive BitTorrent package, or an entire server directory via SFTP, Pincer automatically splits the file into pieces and downloads them all at the exact same time using multiple concurrent connections. It uses memory-safe Rust and zero-allocation disk writing to ensure your computer never slows down, even at peak gigabit speeds.
+Whether you're downloading a standard web file, a massive BitTorrent package, or an entire server directory via SFTP, Pincer automatically splits the file into pieces and downloads them all at the exact same time using multiple concurrent connections. Built completely in memory-safe Rust, it leverages zero-allocation disk writing to ensure your computer never slows down, even at peak gigabit speeds.
+
+> **🌟 Love what you see?**
+> If you find this project interesting, useful, or just want to support open-source Rust development, **please consider leaving a star!** It helps the project grow and reach more amazing contributors like you!
 
 > **New to Pincer?** 
 > - 📖 Read [How Pincer Works (For Everyone)](docs/HOW_IT_WORKS.md) for a simple explanation of concurrent downloads and BitTorrent.
 > - 🚀 Read the [User Guide](docs/USER_GUIDE.md) to learn how to download files using the Command Line!
+
+---
+
+## 🤝 Calling All Contributors!
+
+We are actively building the ultimate open-source download engine, and **we want your help!** Whether you're a Rust veteran or a newcomer looking for a friendly project to dive into, there is a place for you here.
+
+- **First-time contributor?** Our codebase is heavily modularized with strict SRP (Single Responsibility Principle) rules, meaning you'll never be overwhelmed by monolithic files.
+- **Ready to jump in?** Check out our [Contributing Guidelines](docs/developers/CONTRIBUTING.md) to get started!
 
 ---
 

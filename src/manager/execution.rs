@@ -62,12 +62,16 @@ impl TaskPostProcessor {
     }
 
     /// Strips macOS Gatekeeper quarantine extended attributes from the completed file.
+    #[cfg(target_os = "macos")]
     pub fn remove_quarantine(final_path: &str) {
-        #[cfg(target_os = "macos")]
         if Path::new(final_path).exists() {
             let _ = xattr::remove(final_path, "com.apple.quarantine");
         }
     }
+
+    /// No-op for non-macOS platforms since Gatekeeper quarantine does not apply.
+    #[cfg(not(target_os = "macos"))]
+    pub fn remove_quarantine(_final_path: &str) {}
 
     /// Executes format transcoding if requested by the task options or filename extension.
     pub async fn handle_conversion(

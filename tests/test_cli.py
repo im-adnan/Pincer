@@ -22,7 +22,7 @@ class TestPincerCLI(unittest.TestCase):
     def test_02_help(self):
         result = subprocess.run([self.binary, "--help"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
-        self.assertIn("Usage: pincer [URL] [OPTIONS]", result.stdout)
+        self.assertIn("Usage: pincer [OPTIONS] [URL]", result.stdout)
 
     def test_03_download_file(self):
         test_out = "dummy_cli_test.zip"
@@ -88,7 +88,7 @@ class TestPincerCLI(unittest.TestCase):
         # Verify that --port option is accepted by parser when combined with help
         result = subprocess.run([self.binary, "--help", "--port", "12345"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0)
-        self.assertIn("RPC server port", result.stdout)
+        self.assertIn("RPC WebSocket listener port", result.stdout)
 
     def test_07_daemon_mode(self):
         import time
@@ -100,7 +100,7 @@ class TestPincerCLI(unittest.TestCase):
         result = subprocess.run([self.binary, "--daemon", "--port", port], capture_output=True, text=True)
         
         self.assertEqual(result.returncode, 0, f"Daemon launch failed. stderr: {result.stderr}\nstdout: {result.stdout}")
-        self.assertIn("Daemon started successfully", result.stdout)
+        self.assertIn("Pincer started in background", result.stdout)
         
         async def check_daemon():
             uri = f"ws://127.0.0.1:{port}/jsonrpc"

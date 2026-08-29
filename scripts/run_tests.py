@@ -123,7 +123,7 @@ def main():
     try:
         # Start server in background
         server_proc = subprocess.Popen(
-            ["./target/debug/pincer"], 
+            ["./target/debug/pincer", "--enable-rpc", "--rpc-listen-port", "6842"], 
             stdout=subprocess.DEVNULL, 
             stderr=subprocess.DEVNULL
         )
@@ -151,10 +151,26 @@ def main():
     print("Running Metalink Tests...")
     print("=============================================")
     metalink_success = False
-    metalink_test = subprocess.run([sys.executable, "-m", "unittest", "tests/test_metalink.py", "-v"])
-    metalink_success = (metalink_test.returncode == 0)
-    if metalink_success:
-        print("\x1b[32m✔ Metalink tests passed successfully!\x1b[0m")
+    if server_proc and server_proc.poll() is None:
+        metalink_test = subprocess.run([sys.executable, "-m", "unittest", "tests/test_metalink.py", "-v"])
+        metalink_success = (metalink_test.returncode == 0)
+        if metalink_success:
+            print("\x1b[32m✔ Metalink tests passed successfully!\x1b[0m")
+    else:
+        print("Error: RPC server failed to start, skipping Metalink tests.")
+
+    # 7.6 Run Core Fixes Tests
+    print("\n=============================================")
+    print("Running Core Fixes Tests...")
+    print("=============================================")
+    core_fixes_success = False
+    if server_proc and server_proc.poll() is None:
+        core_fixes_test = subprocess.run([sys.executable, "-m", "unittest", "tests/test_core_fixes.py", "-v"])
+        core_fixes_success = (core_fixes_test.returncode == 0)
+        if core_fixes_success:
+            print("\x1b[32m✔ Core Fixes tests passed successfully!\x1b[0m")
+    else:
+        print("Error: RPC server failed to start, skipping Core Fixes tests.")
 
     # 8. Shutdown background server
     if server_proc:
@@ -178,6 +194,7 @@ def main():
     print(f"  - CLI Tests:                 {'PASSED' if cli_success else 'FAILED'}")
     print(f"  - RPC Tests:                 {'PASSED' if rpc_success else 'FAILED'}")
     print(f"  - Metalink Tests:            {'PASSED' if metalink_success else 'FAILED'}")
+    print(f"  - Core Fixes Tests:          {'PASSED' if core_fixes_success else 'FAILED'}")
     print("=============================================")
     
     if ci_mode:

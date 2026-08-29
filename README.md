@@ -1,91 +1,75 @@
 # Pincer — High-Performance Rust Download Engine
 
-## Disclaimer
-
-This program comes with no warranty. You must use this program at your own risk.
+[![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![User Guide](https://img.shields.io/badge/Docs-User%20Guide-orange.svg)](docs/USER_GUIDE.md)
 
 ## Introduction
 
-Pincer is a modern, multithreaded download engine written entirely in Rust from the ground up. It is designed to be a lightweight, safe, and high-performance core tailored for modern desktop applications that require robust file transfer capabilities.
+**Pincer** is a modern, ultra-high-performance download engine designed to get files to your computer as fast as your internet connection allows. 
 
-Pincer handles downloads by dividing files into dynamic segments and fetching them across multiple parallel connections to maximize bandwidth. It features an advanced persistence layer that ensures sequential resume, efficiently continuing downloads from exactly where they left off by utilizing HTTP Range headers.
+Whether you're downloading a standard web file, a massive BitTorrent package, or an entire server directory via SFTP, Pincer automatically splits the file into pieces and downloads them all at the exact same time using multiple concurrent connections. It uses memory-safe Rust and zero-allocation disk writing to ensure your computer never slows down, even at peak gigabit speeds.
 
-## Features
+> **New to Pincer?** 
+> - 📖 Read [How Pincer Works (For Everyone)](docs/HOW_IT_WORKS.md) for a simple explanation of concurrent downloads and BitTorrent.
+> - 🚀 Read the [User Guide](docs/USER_GUIDE.md) to learn how to download files using the Command Line!
 
-- Command-line interface
-- Download files through HTTP(S)
-- Concurrent segmented downloading
-- Sequential resume utilizing HTTP Range headers
-- Native memory safety through Rust
-- Sparse writing using `write_at` for direct disk I/O
-- JSON-RPC (over WebSocket) interface for real-time status updates
-- Multi-threaded chunking and worker pool
-- Global throughput stats management
+---
 
-## Versioning and Release Schedule
+## Key Features
 
-We use standard semantic versioning (`MAJOR.MINOR.PATCH`) for Pincer releases. Releases are automated via GitHub Actions and triggered by pushing a git tag.
+- **Blazing Fast Concurrent Downloads**: Splits HTTP, HTTPS, FTP, and SFTP files into multiple streams.
+- **Native BitTorrent Integration**: High-throughput torrent and magnet streaming powered by `librqbit`.
+- **Zero-Allocation Disk I/O**: Writes data directly into pre-allocated spaces on your hard drive to prevent stuttering.
+- **Robust Sequential Resume**: Automatically resumes interrupted transfers right where they left off.
+- **macOS Staging Bundles**: Wraps active downloads in native macOS `.download` bundles with Gatekeeper management.
+- **Built-in Media Transcoding**: Automatically converts images, PDFs, audio, and video using native tools.
+- **Real-Time JSON-RPC 2.0**: A powerful WebSocket API for building Graphical User Interfaces (GUIs) on top of the engine.
 
-## Getting the Source Code
+---
 
-Clone the repository from GitHub:
+## Quick Start
 
-```bash
-git clone https://github.com/<GITHUB_OWNER>/Pincer-Engine
-cd Pincer-Engine
-```
-
-> If you use automation scripts or CI, set `GITHUB_OWNER` to your GitHub account and `GITHUB_REPO` to `Pincer-Engine`.
-
-## Dependencies
-
-| Feature | Dependency |
-|---|---|
-| Core Runtime | Rust (`rustc`, `cargo`), `tokio` |
-| JSON-RPC Interface | `axum` |
-| HTTP Downloads | `reqwest` |
-| FTP/SFTP Support | `suppaftp`, `russh`, `russh-sftp` |
-
-## How to Build
-
-Please refer to the [Build and Release Guide](docs/BUILD_AND_RELEASE.md) for detailed instructions on setting up your environment, building the project, and managing releases.
-
-## Command-Line Usage
-
-For quick direct download tests without using the RPC server:
+### Installation & Build
 
 ```bash
-./target/release/pincer "https://example.com/file.zip"
+# Clone the repository
+git clone https://github.com/Pincer-Engine/pincer-engine.git
+cd pincer-engine
+
+# Build in release mode
+cargo build --release
 ```
 
-This will download the file to the current directory using multiple threads by default.
+### Direct CLI Download Mode
 
-## WebSocket / JSON-RPC
+Download any URL directly with live progress tracking:
 
-Pincer features an integrated RPC layer powered by Axum, which handles incoming WebSocket connections and processes JSON-RPC commands. The WebSocket server listens on port `6842` by default (`ws://127.0.0.1:6842/jsonrpc`) and implements a robust JSON-RPC interface for full engine control.
+```bash
+./target/release/pincer "https://example.com/largefile.iso" --split 8 --dir ~/Downloads
+```
 
-## Contributing
+---
 
-We welcome contributions to Pincer! Please check out our [Contributing Guidelines](docs/CONTRIBUTING.md) to learn how to set up your environment, follow our coding rules, and submit a pull request.
+## Documentation Directory
 
-## Architecture
+We have organized our documentation to cater to both standard users and technical developers.
 
-Pincer is built on the `tokio` async runtime and consists of three primary layers:
+### For Users
+- [How Pincer Works (Layman's Guide)](docs/HOW_IT_WORKS.md)
+- [User Guide (Command Line Instructions)](docs/USER_GUIDE.md)
 
-1. **RPC Layer (Axum)**: Handles incoming WebSocket connections and processes JSON-RPC commands.
-2. **Management Layer**: Tracks download states, provides thread-safe access to task metadata, and manages global throughput stats.
-3. **Worker Pool**: Each task spawns multiple workers that independently fetch segments and perform non-blocking concurrent writes to disk using zero-allocation writes.
+### For Developers
+If you are building an app on top of Pincer, or want to contribute to the engine's Rust codebase, see our technical specs:
+- [JSON-RPC 2.0 API Reference](docs/developers/API_REFERENCE.md)
+- [Architecture & Design Specification](docs/developers/ARCHITECTURE.md)
+- [Testing & Quality Assurance Guide](docs/developers/TESTING.md)
+- [Build and Release Guide](docs/developers/BUILD_AND_RELEASE.md)
+- [Contributing Guidelines](docs/developers/CONTRIBUTING.md)
+- [Future Engine Roadmap](docs/developers/ROADMAP.md)
 
-## Documentation
+---
 
-Pincer is fully documented. Refer to the following guides based on your needs:
+## License
 
-- **[JSON-RPC API & Comprehensive Manual](docs/USAGE.md)**: The complete user and developer manual. Contains all CLI arguments, configurations, and WebSocket RPC commands.
-- **[Build and Release Guide](docs/BUILD_AND_RELEASE.md)**: Detailed instructions on setting up your environment, building the project, and managing releases.
-- **[Contributing Guidelines](docs/CONTRIBUTING.md)**: The onboarding guide for new developers, including rules for pull requests and running tests.
-- **[Testing Guide](docs/TESTING.md)**: Complete details on running the automated test runner, manual CLI/RPC tests, and writing new test cases.
-- **[Architecture & Future Roadmap](docs/FUTURE.md)**: An internal design document detailing the engine's technical direction and strategies for maintaining peak speed.
-
-## Support
-
-If you find Pincer valuable, please consider starring the repository and sharing it with others — it is greatly appreciated.
+Pincer is released under the [MIT License](LICENSE).

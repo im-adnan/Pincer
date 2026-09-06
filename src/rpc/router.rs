@@ -48,6 +48,7 @@ impl MethodRouter {
             "pin.addUri" => TaskControlHandlers::handle_add_uri(&req, &manager).await,
             "pin.addTorrent" => TaskControlHandlers::handle_add_torrent(&req, &manager).await,
             "pin.addMetalink" => TaskControlHandlers::handle_add_metalink(&req, &manager).await,
+            "pin.mergeFiles" => TaskControlHandlers::handle_merge_files(&req, &manager).await,
 
             // Options
             "pin.changeGlobalOption" => {

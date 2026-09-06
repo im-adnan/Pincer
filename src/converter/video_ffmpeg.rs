@@ -49,4 +49,44 @@ impl FfmpegConverter {
             }
         }
     }
+
+    /// Merges an audio and video file into a destination file using `ffmpeg`.
+    pub async fn merge(video_path: &Path, audio_path: &Path, dest_path: &Path) -> bool {
+        println!(
+            "[CONVERTER] Running: ffmpeg -y -i {:?} -i {:?} -c:v copy -c:a aac {:?}",
+            video_path, audio_path, dest_path
+        );
+
+        match tokio::process::Command::new("ffmpeg")
+            .arg("-y")
+            .arg("-i")
+            .arg(video_path)
+            .arg("-i")
+            .arg(audio_path)
+            .arg("-c:v")
+            .arg("copy")
+            .arg("-c:a")
+            .arg("aac")
+            .arg(dest_path)
+            .output()
+            .await
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    println!("[CONVERTER] ffmpeg merge succeeded!");
+                    true
+                } else {
+                    eprintln!(
+                        "[CONVERTER ERROR] ffmpeg merge failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                    false
+                }
+            }
+            Err(e) => {
+                println!("[CONVERTER] ffmpeg not available: {}", e);
+                false
+            }
+        }
+    }
 }

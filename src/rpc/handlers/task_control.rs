@@ -38,4 +38,33 @@ impl TaskControlHandlers {
     ) -> Option<Value> {
         AddMetalinkHandler::handle(req, manager).await
     }
+
+    /// Handles `pin.mergeFiles` JSON-RPC method.
+    pub async fn handle_merge_files(
+        req: &RPCRequest,
+        _manager: &Arc<DownloadManager>,
+    ) -> Option<Value> {
+        let params = req.params.as_ref()?;
+        
+        let mut idx = 0;
+        if params.get(0)?.as_str()?.starts_with("token:") {
+            idx += 1;
+        }
+
+        let video_path_str = params.get(idx)?.as_str()?;
+        let audio_path_str = params.get(idx + 1)?.as_str()?;
+        let dest_path_str = params.get(idx + 2)?.as_str()?;
+
+        let video_path = std::path::Path::new(video_path_str);
+        let audio_path = std::path::Path::new(audio_path_str);
+        let dest_path = std::path::Path::new(dest_path_str);
+
+        let success = crate::converter::FfmpegConverter::merge(video_path, audio_path, dest_path).await;
+        
+        if success {
+            Some(serde_json::json!("OK"))
+        } else {
+            None // Will trigger error response
+        }
+    }
 }

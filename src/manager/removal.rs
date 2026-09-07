@@ -230,7 +230,7 @@ impl TaskRemovalManager {
                     // For direct downloads: move the downloaded file and its .download bundle to Trash
                     for file in &files {
                         let file_path = PathBuf::from(&file.path);
-                        if file_path.exists() && !Self::is_protected_directory(&file_path) {
+                        if !Self::is_protected_directory(&file_path) {
                             Self::safe_delete_file(&file_path);
 
                             if let Some(filename) = file_path.file_name().and_then(|s| s.to_str()) {

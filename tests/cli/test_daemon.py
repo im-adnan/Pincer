@@ -47,8 +47,8 @@ class TestPincerCLIDaemon(unittest.TestCase):
             self.fail(f"Failed to connect to daemonized RPC server: {e}")
             
         try:
-            pid_str = result.stdout.split("PID: ")[1].strip()
-            pid = int(pid_str)
+            pid_str = result.stdout.split("PID: ")[1].split()[0]
+            pid = int(''.join(filter(str.isdigit, pid_str)))
             os.kill(pid, 15) # SIGTERM
         except Exception as e:
             print(f"Failed to kill daemon gracefully: {e}")

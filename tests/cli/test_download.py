@@ -2,7 +2,7 @@ import unittest
 import subprocess
 import os
 
-TEST_URL = "https://images.unsplash.com/photo-1446941303752-a64bb1048d54?ixlib=rb-4.1.0&q=85&fm=jpg&crop=entropy&cs=srgb&dl=nasa-U2uKrI4lci8-unsplash.jpg"
+TEST_URL = "https://raw.githubusercontent.com/rust-lang/cargo/master/README.md"
 
 class TestPincerCLIDownload(unittest.TestCase):
     @classmethod
@@ -23,7 +23,7 @@ class TestPincerCLIDownload(unittest.TestCase):
             "--out", test_out,
             "--dir", self.temp_dir,
             "--split", "2"
-        ], capture_output=True, text=True)
+        ], capture_output=True, text=True, timeout=15)
         
         self.assertEqual(result.returncode, 0, f"Download failed. stderr: {result.stderr}\nstdout: {result.stdout}")
         self.assertTrue(os.path.exists(dest_path), "Output file was not created.")
@@ -40,7 +40,7 @@ class TestPincerCLIDownload(unittest.TestCase):
             TEST_URL,
             "--out", malicious_out,
             "--dir", self.temp_dir
-        ], capture_output=True, text=True)
+        ], capture_output=True, text=True, timeout=15)
         
         self.assertEqual(result.returncode, 0)
         

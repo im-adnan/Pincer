@@ -18,4 +18,5 @@
 
 # Python
 __pycache__/
-tests/temporary/*
+tests/temporary/
+tests/**/temporary/

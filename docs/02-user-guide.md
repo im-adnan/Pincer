@@ -2,7 +2,7 @@
 
 Welcome to the Pincer Engine! This guide will walk you through how to start downloading files quickly and easily using the Command Line Interface (CLI). 
 
-If you are a developer looking to integrate Pincer into your own app or use the advanced API, please check out our [API Reference](developers/API_REFERENCE.md).
+If you are a developer looking to integrate Pincer into your own app or use the advanced API, check out the [API docs](api/01-connecting.md). For the full CLI flag reference, see [CLI Reference](03-cli-reference.md).
 
 ---
 

@@ -1,14 +1,12 @@
 # API Comparison
 
-This document tracks how Pincer's API methods map to standard download management patterns, demonstrating full coverage.
-
-> **See also**: [API Overview](../api/README.md) · [Feature Status](../FEATURE_STATUS.md)
+How Pincer's API methods map to standard download management patterns, demonstrating full coverage.
 
 ---
 
 ## Task Addition & Management
 
-| Standard Method Name | Pincer Method Name | Status |
+| Standard Method | Pincer Method | Status |
 |:---|:---|:---|
 | `addUri` | `pin.addUri` | ✅ Fully Covered |
 | `addTorrent` | `pin.addTorrent` | ✅ Fully Covered |
@@ -28,7 +26,7 @@ This document tracks how Pincer's API methods map to standard download managemen
 
 ## Status & Monitoring
 
-| Function | Pincer Equivalent | Status |
+| Standard Method | Pincer Method | Status |
 |:---|:---|:---|
 | `tellStatus` | `pin.tellStatus` | ✅ Fully Covered |
 | `tellActive` | `pin.tellActive` | ✅ Fully Covered |
@@ -44,7 +42,7 @@ This document tracks how Pincer's API methods map to standard download managemen
 
 ## Configuration, History & System
 
-| Function | Pincer Equivalent | Status |
+| Standard Method | Pincer Method | Status |
 |:---|:---|:---|
 | `changeOption` | `pin.changeOption` | ✅ Fully Covered |
 | `getOption` | `pin.getOption` | ✅ Fully Covered |
@@ -65,7 +63,7 @@ This document tracks how Pincer's API methods map to standard download managemen
 
 ## Events
 
-| Event | Pincer Equivalent | Status |
+| Standard Event | Pincer Event | Status |
 |:---|:---|:---|
 | `onDownloadStart` | `pin.onDownloadStart` | ✅ Fully Covered |
 | `onDownloadPause` | `pin.onDownloadPause` | ✅ Fully Covered |

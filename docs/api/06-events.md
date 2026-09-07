@@ -1,8 +1,8 @@
-# WebSocket Events
+# Events
 
 Pincer streams real-time status notifications to all connected WebSocket clients. You do not need to poll for updates.
 
-> **See also**: [Connection & Auth](CONNECTION.md) · [Task Management](TASK_MANAGEMENT.md) · [Swift Integration](../guides/SWIFT_INTEGRATION.md)
+> **Previous:** [Advanced Features](05-advanced-features.md) · **Next:** [System Controls](07-system-controls.md)
 
 ---
 

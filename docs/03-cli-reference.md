@@ -2,7 +2,7 @@
 
 Complete reference for using Pincer as a standalone command-line download tool.
 
-> **See also**: [User Guide](../../USER_GUIDE.md) · [Session Persistence](SESSION_PERSISTENCE.md) · [API Overview](../api/README.md)
+> **See also**: [User Guide](02-user-guide.md) for quick-start examples · [Session & Resume](guides/01-session-and-resume.md) for persistence details
 
 ---
 
@@ -33,7 +33,7 @@ This will download the file to the current directory using multiple threads by d
 
 ### Planned CLI Flags
 
-The CLI parser (using `lexopt`) will be expanded to support additional flags for users who want to use Pincer exclusively from the terminal without the RPC server:
+The CLI parser (using `lexopt`) will be expanded to support additional flags:
 
 *   `-v` or `--version`
 *   `-V` or `--check-integrity`
@@ -51,21 +51,19 @@ The CLI parser (using `lexopt`) will be expanded to support additional flags for
 
 ---
 
-## Thread Control
-
-### Technical Architecture & Threads
+## How Threading Works
 
 *   **Rust-Native Performance**: Built on `tokio` for non-blocking I/O and zero-allocation disk writes.
 *   **Dynamic Thread Scaling**: Supports up to **99 threads** per task. The engine automatically splits the file into equal byte-ranges and assigns a dedicated worker to each.
 *   **Range Support Detection**: If a server does not support `Accept-Ranges`, Pincer gracefully falls back to a single thread to ensure data integrity.
 
-In **Pincer**, download threads are dynamically controlled **via the JSON-RPC interface** when adding or modifying a task using options like `split` (which defines the number of connections/threads per download) and `min-split-size`.
+Download threads are dynamically controlled **via the JSON-RPC interface** when adding or modifying a task using options like `split` and `min-split-size`. See [Configuration](api/04-configuration.md) for all available options.
 
 ---
 
-## Worker Log Verification
+## Verifying Multi-Threading (Worker Logs)
 
-To verify that Pincer is correctly utilizing multi-threading, you can observe the internal worker logs during a CLI download.
+To verify that Pincer is correctly utilizing multi-threading, observe the internal worker logs during a CLI download.
 
 **Example Log Output (`-s 16`):**
 ```text
@@ -82,10 +80,3 @@ Threads: 16
 [========================================] 100.00%
 ✅ Download complete!
 ```
-
-### Why Use These Features?
-
-1.  **99 Threads**: Maximizes bandwidth utilization on high-latency connections or from servers that throttle single-connection speeds.
-2.  **Session Persistence**: Critical for long-running downloads; protects progress against system crashes or engine restarts.
-3.  **Advanced CLI**: Allows developers and power users to use Pincer as a drop-in, high-performance download engine.
-4.  **Worker Logs**: Provides transparency and allows users to debug connection issues or verify server range support in real-time.

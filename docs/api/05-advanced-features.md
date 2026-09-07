@@ -2,7 +2,7 @@
 
 Detailed documentation of Pincer's advanced capabilities beyond basic download management.
 
-> **See also**: [Task Management](TASK_MANAGEMENT.md) · [Configuration](CONFIGURATION.md) · [Events](EVENTS.md)
+> **Previous:** [Configuration](04-configuration.md) · **Next:** [Events](06-events.md)
 
 ---
 
@@ -22,7 +22,7 @@ Pincer features a powerful URL resolution engine that handles more than just sim
 Pincer features an integrated format conversion engine that triggers automatically upon download completion if a different file format is requested.
 
 - **Image Conversion**: Utilizes macOS `sips` for standard image transcoding between formats like `png`, `jpg`/`jpeg`, `webp`, `heic`/`heif`.
-  - **PDF Support**: Utilizes `sips` with a automatic built-in fallback to macOS's native `cupsfilter` utility for extremely reliable PDF generation.
+  - **PDF Support**: Utilizes `sips` with an automatic built-in fallback to macOS's native `cupsfilter` utility for extremely reliable PDF generation.
 - **Audio/Video Conversion**: Uses `ffmpeg` (if globally installed) or falls back to macOS's native `afconvert` utility for audio (`mp3`, `wav`, `m4a`, `aac`).
 - **Converting Status**: During the transcoding phase, the task's state changes to `"converting"` before final completion.
 

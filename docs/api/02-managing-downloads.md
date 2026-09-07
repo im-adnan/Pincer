@@ -1,8 +1,8 @@
-# Task Management Methods
+# Managing Downloads
 
 Methods for adding, removing, pausing, and controlling download tasks.
 
-> **See also**: [Connection & Auth](CONNECTION.md) · [Status & Monitoring](STATUS_AND_MONITORING.md) · [Events](EVENTS.md)
+> **Previous:** [Connecting](01-connecting.md) · **Next:** [Checking Status](03-checking-status.md)
 
 ---
 
@@ -28,17 +28,17 @@ Methods for adding, removing, pausing, and controlling download tasks.
 
 ---
 
-## Key Task Options
+## Task Options
 
-When passing an `options` object to `pin.addUri` or `pin.changeOption`, the following keys are used:
+When passing an `options` object to `pin.addUri` or `pin.changeOption`, these are the most common keys:
 
 - `dir`: Target directory to store the file.
 - `out`: The file name of the downloaded file.
-- `split` or `-s`: (Integer) Number of connections to use (Default: 5).
-- `max-connection-per-server` or `-x`: (Integer) Max connections to a single server (Default: 1).
-- `min-split-size` or `-k`: (String) Minimum size to split a chunk (e.g., `1M`).
+- `split`: (Integer) Number of connections to use (Default: 5).
+- `max-connection-per-server`: (Integer) Max connections to a single server (Default: 1).
+- `min-split-size`: (String) Minimum size to split a chunk (e.g., `1M`).
 - `max-download-limit`: (String) Speed limit for the download (e.g., `50K`, `0` for unlimited).
 - `header`: (Array of Strings) Custom HTTP Headers.
 - `user-agent`: (String) Custom User-Agent string.
 
-> **See also**: For the full list of configuration keys and defaults, see [Configuration](CONFIGURATION.md).
+For the complete list of all configuration keys and defaults, see [Configuration](04-configuration.md).

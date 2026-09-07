@@ -1,8 +1,8 @@
-# Status & Monitoring Methods
+# Checking Status
 
 Methods for querying download progress, task metadata, and global engine statistics.
 
-> **See also**: [Task Management](TASK_MANAGEMENT.md) · [Events](EVENTS.md) · [Configuration](CONFIGURATION.md)
+> **Previous:** [Managing Downloads](02-managing-downloads.md) · **Next:** [Configuration](04-configuration.md)
 
 ---
 

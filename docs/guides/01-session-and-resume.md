@@ -1,14 +1,12 @@
-# Session Persistence & Resumption
+# Session & Resume
 
 How Pincer automatically saves progress and resumes interrupted downloads.
-
-> **See also**: [CLI Reference](CLI_REFERENCE.md) · [System Methods](../api/SYSTEM.md) · [Configuration](../api/CONFIGURATION.md)
 
 ---
 
 ## Overview
 
-Pincer includes a built-in persistence layer. All tasks, global options, and progress are saved to a session file.
+Pincer includes a built-in persistence layer. All tasks, global options, and progress are saved to a session file automatically.
 
 ---
 
@@ -32,4 +30,4 @@ You can also manage sessions explicitly via the JSON-RPC API:
 | `pin.shutdown` | Gracefully saves session and stops the engine. |
 | `pin.forceShutdown` | Immediately exits the engine **without** saving. |
 
-For the full system methods reference, see [System Methods](../api/SYSTEM.md).
+For the full system methods reference, see [System Controls](../api/07-system-controls.md).

@@ -1,8 +1,8 @@
-# System & History Management Methods
+# System Controls
 
 Methods for managing engine lifecycle, session control, and batch operations.
 
-> **See also**: [Connection & Auth](CONNECTION.md) · [Session Persistence](../guides/SESSION_PERSISTENCE.md)
+> **Previous:** [Events](06-events.md)
 
 ---
 

@@ -2,11 +2,11 @@
 
 Current implementation status of Pincer Engine features. This document tracks what has been achieved, what remains, and the prioritized roadmap for upcoming work.
 
-> **See also**: [Roadmap](ROADMAP.md) · [API Comparison](guides/API_COMPARISON.md) · [Architecture](ARCHITECTURE.md)
+> For dependency migration strategy, see [Roadmap](05-roadmap.md).
 
 ---
 
-## Recreated Features (Achieved)
+## Achieved Features
 
 *   **Command-line interface** (lexopt)
 *   **Download files through HTTP(S)**
@@ -34,7 +34,7 @@ Current implementation status of Pincer Engine features. This document tracks wh
 
 ---
 
-## Advanced Features to Add (Prioritized Roadmap)
+## Prioritized Next Steps
 
 1.  **Missing RPC Standard & Introspection Methods** (`getFiles`, `getUris`, `system.multicall`): Critical for GUI/Web UI frontends to display file contents.
 2.  **Advanced Task Modification** (`changeUri`, `changePosition`): Highly requested for dynamic download environments.

@@ -1,8 +1,8 @@
-# Configuration & Options
+# Configuration
 
 Methods for reading and modifying engine configuration, plus the complete reference of all configuration keys and their defaults.
 
-> **See also**: [Task Management](TASK_MANAGEMENT.md) · [Connection & Auth](CONNECTION.md)
+> **Previous:** [Checking Status](03-checking-status.md) · **Next:** [Advanced Features](05-advanced-features.md)
 
 ---
 
@@ -63,21 +63,6 @@ Methods for reading and modifying engine configuration, plus the complete refere
 - `peer-id-prefix=-TR3000-`
 
 > **Note**: Changes to `rpc-listen-port`, `rpc-secret`, `listen-port`, and `dht-listen-port` require an engine restart to take effect.
-
----
-
-## Common Task Options
-
-These are the most frequently used keys when passing an `options` object:
-
-- `dir` — Target directory
-- `out` — Output filename
-- `split` — Number of connections/threads
-- `max-connection-per-server` — Max connections per server
-- `min-split-size` — Minimum split size (e.g. `1M`)
-- `max-download-limit` — Speed limit per download
-- `header` — Custom HTTP headers
-- `user-agent` — Custom User-Agent
 
 ---
 

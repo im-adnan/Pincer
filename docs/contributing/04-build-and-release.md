@@ -1,6 +1,8 @@
-# Build and Release Guide
+# Build & Release
 
-This document covers everything you need to know about building Pincer from source, setting up the development environment, and managing new releases.
+Everything you need to know about building Pincer from source, setting up the development environment, and managing new releases.
+
+---
 
 ## Prerequisites
 
@@ -14,6 +16,8 @@ After installation, reload your environment:
 ```bash
 source $HOME/.cargo/env
 ```
+
+---
 
 ## How to Build
 
@@ -43,6 +47,8 @@ source $HOME/.cargo/env
    cargo build --release
    ```
    After a release build, the executable is located at `target/release/pincer`.
+
+---
 
 ## How to Release
 

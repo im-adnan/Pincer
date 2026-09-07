@@ -2,8 +2,6 @@
 
 Step-by-step guide to integrating Pincer Engine into a macOS Swift/SwiftUI application.
 
-> **See also**: [API Overview](../api/README.md) · [Connection & Auth](../api/CONNECTION.md) · [Events](../api/EVENTS.md)
-
 ---
 
 ## Overview
@@ -39,6 +37,8 @@ let webSocketTask = session.webSocketTask(with: url)
 webSocketTask.resume()
 ```
 
+For connection details (ports, auth tokens), see [Connecting](../api/01-connecting.md).
+
 ---
 
 ## Step 3: Trigger Features via JSON-RPC
@@ -64,6 +64,8 @@ webSocketTask.send(.data(jsonData)) { error in ... }
 
 *(Whether you are using `pin.addUri` for FTP links, or `pin.changeGlobalOption` to throttle speeds, the JSON-RPC interface remains identical).*
 
+For all available methods, see [Managing Downloads](../api/02-managing-downloads.md).
+
 ---
 
 ## Step 4: Map Introspection Models and Listen to Events
@@ -87,10 +89,10 @@ webSocketTask.receive { result in
 }
 ```
 
+For the full list of events, see [Events](../api/06-events.md).
+
 ---
 
 ## Summary
 
 By keeping the heavy lifting inside the Pincer Rust engine, your Swift frontend can remain incredibly lightweight—simply sending JSON-RPC commands and painting the UI based on the incoming WebSocket event stream.
-
-For the full list of available events, see [Events](../api/EVENTS.md). For all available RPC methods, see the [API Overview](../api/README.md).

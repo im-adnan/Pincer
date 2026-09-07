@@ -35,4 +35,4 @@ Pincer uses a technique called **Zero-Allocation Writing**. We build a "magic ho
 Sometimes, you download a video or an image, but it's not in the format you want (like downloading an `.iso` when you wanted an `.mp4`). Pincer can automatically use tools built into your computer to translate the file for you as soon as the download finishes. It's like having an automatic translator waiting at your front door!
 
 ---
-> **Next Steps:** Ready to start downloading? Head over to the [User Guide](USER_GUIDE.md) to learn how to use the Pincer application!
+> **Next Steps:** Ready to start downloading? Head over to the [User Guide](02-user-guide.md) to learn how to use the Pincer application!

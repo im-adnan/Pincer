@@ -123,7 +123,9 @@ impl CliArgs {
                     println!("  -o, --out <FILENAME>                  Output filename");
                     println!("  -s, --split <N>                       Number of connection threads (default: 4)");
                     println!("  -f, --format <FMT>                    Transcode output format (mp4, mp3, pdf, etc.)");
-                    println!("      --max-download-limit <SPEED>      Set speed limit (e.g. 5M, 500K)");
+                    println!(
+                        "      --max-download-limit <SPEED>      Set speed limit (e.g. 5M, 500K)"
+                    );
                     println!("  -l, --log                             Enable ANSI terminal progress rendering");
                     println!("  -v, --version                         Print version information");
                     println!("  -h, --help                            Print help message");

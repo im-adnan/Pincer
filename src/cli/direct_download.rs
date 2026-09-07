@@ -242,7 +242,10 @@ impl DirectDownloader {
             } else if let Ok(val) = limit_str.parse::<u64>() {
                 speed_limit = val;
             } else {
-                eprintln!("  \x1b[33m[WARNING]\x1b[0m Invalid speed limit: {}. Ignoring.", limit_str);
+                eprintln!(
+                    "  \x1b[33m[WARNING]\x1b[0m Invalid speed limit: {}. Ignoring.",
+                    limit_str
+                );
             }
         }
 

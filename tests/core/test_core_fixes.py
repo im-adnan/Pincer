@@ -103,3 +103,65 @@ class TestCoreFixes(unittest.IsolatedAsyncioTestCase):
         
         # The file itself might still exist if it wasn't a completed internal task, 
         # but the key check is the parent directory integrity.
+
+    async def test_03_query_parameter_extension_parsing(self):
+        """
+        Tests that query parameters do not confuse the extension parsing,
+        causing unnecessary/failing file conversion attempts.
+        """
+        # A URL with query params
+        test_url = "https://images.pexels.com/photos/29422195/pexels-photo-29422195.jpeg?cs=srgb&dl=pexels-mehmet-demi-r-746820582-29422195.jpg&fm=jpg"
+        # No 'out' specified to force automatic extension detection
+        res = await self.rpc_call("pin.addUri", [
+            [test_url],
+            {"dir": TEMP_DIR}
+        ])
+        gid = res.get("result")
+        self.assertIsNotNone(gid, f"Failed to add URI, response: {res}")
+
+        completed = False
+        final_status = None
+        for _ in range(30):
+            status_res = await self.rpc_call("pin.tellStatus", [gid])
+            status = status_res.get("result", {}).get("status")
+            if status == "complete":
+                completed = True
+                break
+            elif status == "error":
+                final_status = status_res
+                break
+            await asyncio.sleep(1)
+
+        self.assertTrue(completed, f"Task did not complete successfully. Status: {final_status}")
+
+    async def test_04_format_conversion_graceful_fallback(self):
+        """
+        Tests that if format conversion fails (e.g., unsupported format),
+        it gracefully restores the original file rather than failing the task.
+        """
+        out_name = "test_graceful_fallback.jpg"
+        res = await self.rpc_call("pin.addUri", [
+            [TEST_IMAGE_URL],
+            # Attempt to convert to a nonsense format
+            {"dir": TEMP_DIR, "out": out_name, "format": "nonsenseformat"}
+        ])
+        gid = res.get("result")
+        self.assertIsNotNone(gid, f"Failed to add URI, response: {res}")
+
+        completed = False
+        for _ in range(30):
+            status_res = await self.rpc_call("pin.tellStatus", [gid])
+            status = status_res.get("result", {}).get("status")
+            if status == "complete":
+                completed = True
+                break
+            elif status == "error":
+                self.fail("Task errored out instead of falling back on conversion failure.")
+            await asyncio.sleep(1)
+
+        self.assertTrue(completed, "Download timed out without completing.")
+        
+        # Verify the original file still exists
+        file_path = os.path.join(TEMP_DIR, out_name)
+        self.assertTrue(os.path.exists(file_path), "Original file missing after failed conversion.")
+        self.assertGreater(os.path.getsize(file_path), 0, "Original file is empty.")

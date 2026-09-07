@@ -37,7 +37,9 @@ impl MethodRouter {
             "pin.pause" => TaskLifecycleHandlers::handle_pause(&req, &manager).await,
             "pin.pauseAll" => TaskLifecycleHandlers::handle_pause_all(&req, &manager).await,
             "pin.forcePause" => TaskLifecycleHandlers::handle_force_pause(&req, &manager).await,
-            "pin.forcePauseAll" => TaskLifecycleHandlers::handle_force_pause_all(&req, &manager).await,
+            "pin.forcePauseAll" => {
+                TaskLifecycleHandlers::handle_force_pause_all(&req, &manager).await
+            }
             "pin.unpause" => TaskLifecycleHandlers::handle_unpause(&req, &manager).await,
             "pin.unpauseAll" => TaskLifecycleHandlers::handle_unpause_all(&req, &manager).await,
             "pin.remove" => TaskLifecycleHandlers::handle_remove(&req, &manager).await,

@@ -5,7 +5,8 @@ First off, thank you for considering contributing to **Pincer**! Your help makes
 This guide will help you set up your environment, understand the codebase, and submit your contributions.
 
 > **Related Documentation**:
-> * To understand how the JSON-RPC interface and CLI arguments work, check the [**Comprehensive Manual & API Reference**](API_REFERENCE.md).
+> * To understand the JSON-RPC interface, check the [**API Reference**](api/README.md).
+> * For the CLI argument reference, see the [**CLI Reference**](guides/CLI_REFERENCE.md).
 > * For the architectural breakdown, read the [**Architecture Specification**](ARCHITECTURE.md).
 > * For testing instructions, read the [**Testing Guide**](TESTING.md).
 

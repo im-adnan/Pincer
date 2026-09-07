@@ -11,14 +11,14 @@ To download a file from the internet, you just need its URL (the web address, li
 
 Open your terminal and type:
 ```bash
-./target/release/pincer "https://example.com/movie.mp4"
+./target/release/pincer "https://example.com/movie.mp4" --log
 ```
-Pincer will automatically split the file and start downloading it as fast as possible. You'll see a live progress bar on your screen showing the speed, time remaining, and the percentage completed.
+Pincer will automatically split the file and start downloading it as fast as possible. By passing the `--log` or `-l` flag, you'll see a live progress bar on your screen showing the speed, time remaining, and the percentage completed.
 
 ### Choosing Where to Save
 By default, Pincer saves the file in the folder where you ran the command. If you want to save it somewhere else (like your Downloads folder), use the `--dir` option:
 ```bash
-./target/release/pincer "https://example.com/movie.mp4" --dir ~/Downloads
+./target/release/pincer "https://example.com/movie.mp4" --dir ~/Downloads --log
 ```
 
 ---
@@ -28,14 +28,14 @@ If you are on a slow connection or a shared network, you might not want Pincer t
 
 You can limit the speed using the `--max-download-limit` option (e.g., `5M` for 5 Megabytes per second):
 ```bash
-./target/release/pincer "https://example.com/movie.mp4" --max-download-limit 5M
+./target/release/pincer "https://example.com/movie.mp4" --max-download-limit 5M --log
 ```
 
-If you want to speed things up by using even more "trucks" (concurrent connections), you can change the `--split` option. The default is 5, but you can increase it up to 16:
+If you want to speed things up by using even more "trucks" (concurrent connections), you can change the `--split` option. The default is 4, but you can increase it up to 16:
 ```bash
-./target/release/pincer "https://example.com/movie.mp4" --split 16
+./target/release/pincer "https://example.com/movie.mp4" --split 16 --log
 ```
-*(Note: Setting this too high might cause the server to temporarily block you, so 5 to 8 is usually a safe sweet spot!)*
+*(Note: Setting this too high might cause the server to temporarily block you, so 4 to 8 is usually a safe sweet spot!)*
 
 ---
 
@@ -43,7 +43,7 @@ If you want to speed things up by using even more "trucks" (concurrent connectio
 Pincer has a powerful, built-in BitTorrent engine. To download a torrent, you don't need any special settings. Just pass the Magnet link (which usually starts with `magnet:?xt=...`) just like a normal URL:
 
 ```bash
-./target/release/pincer "magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Ubuntu" --dir ~/Downloads
+./target/release/pincer "magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Ubuntu" --dir ~/Downloads --log
 ```
 Pincer will automatically connect to the BitTorrent network, find neighbors who have the file, and download it for you. 
 
@@ -57,10 +57,10 @@ Pincer creates a special `.download` file while it is working. If you cancel the
 ---
 
 ## 5. Converting Files Automatically
-If you are downloading a video or an image and want it in a different format, you can tell Pincer to convert it the moment the download finishes using the `--convert-to` option:
+If you are downloading a video or an image and want it in a different format, you can tell Pincer to convert it the moment the download finishes using the `--format` (or `-f`) option:
 
 ```bash
-./target/release/pincer "https://example.com/image.png" --convert-to jpg
+./target/release/pincer "https://example.com/image.png" --format jpg --log
 ```
 Pincer will download the `PNG` image, and then automatically convert it into a `JPG` for you!
 

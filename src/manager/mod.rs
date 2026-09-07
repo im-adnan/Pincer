@@ -279,9 +279,34 @@ impl DownloadManager {
         res
     }
 
+    /// Forcefully pauses an active or waiting task by GID.
+    pub async fn force_pause_task(self: &Arc<Self>, id: &str) -> bool {
+        let session = self.get_torrent_session().await.ok();
+        let res = TaskLifecycleManager::force_pause_task(
+            id,
+            &self.tasks,
+            &self.torrent_handles,
+            session.as_ref(),
+            &self.tx,
+        )
+        .await;
+        if res {
+            self.save_session().await;
+            self.schedule_tasks().await;
+        }
+        res
+    }
+
     /// Pauses all active and waiting tasks across the engine.
     pub async fn pause_all_tasks(self: &Arc<Self>) {
         TaskLifecycleManager::pause_all(&self.tasks, &self.tx).await;
+        self.save_session().await;
+        self.schedule_tasks().await;
+    }
+
+    /// Forcefully pauses all active and waiting tasks across the engine.
+    pub async fn force_pause_all_tasks(self: &Arc<Self>) {
+        TaskLifecycleManager::force_pause_all(&self.tasks, &self.tx).await;
         self.save_session().await;
         self.schedule_tasks().await;
     }
@@ -483,6 +508,7 @@ impl DownloadManager {
             &self.tasks,
             &self.torrent_handles,
             session.as_ref(),
+            &self.tx,
         )
         .await;
         if res {
@@ -500,6 +526,7 @@ impl DownloadManager {
             &self.tasks,
             &self.torrent_handles,
             session.as_ref(),
+            &self.tx,
         )
         .await;
         if res {

@@ -36,6 +36,147 @@ impl DirectDownloader {
         if args.log {
             println!("\n  \x1b[1;34m🚀 PINCER\x1b[0m | \x1b[37mHigh-Performance Engine\x1b[0m");
             println!("  \x1b[90m───────────────────────────────────────────\x1b[0m");
+        }
+
+        let url_lower = url.to_lowercase();
+        if url_lower.starts_with("magnet:?") || url_lower.ends_with(".torrent") {
+            Self::run_torrent(url, args, manager).await;
+        } else if url_lower.ends_with(".metalink") {
+            Self::run_metalink(url, args, manager).await;
+        } else {
+            Self::run_http(url, args, manager).await;
+        }
+    }
+
+    /// Handles local torrent downloads using librqbit without a daemon.
+    async fn run_torrent(url: String, args: CliArgs, manager: Arc<DownloadManager>) {
+        if args.log {
+            println!("  \x1b[34m[INFO]\x1b[0m Loading Torrent...");
+        }
+
+        let torrent_source = librqbit::AddTorrent::from_url(url.clone());
+        let session = manager
+            .get_torrent_session()
+            .await
+            .expect("Failed to initialize torrent session");
+
+        // Extract basic metadata for display
+        let (initial_name, _, _) =
+            crate::torrent::TorrentTaskSpawner::extract_source_info(&torrent_source);
+        let final_name = args.out.unwrap_or(initial_name);
+
+        if args.log {
+            println!("  \x1b[32m[SUCCESS]\x1b[0m Torrent loaded!");
+            println!("  \x1b[90m───────────────────────────────────────────\x1b[0m");
+            println!("  \x1b[1;33m📦 Torrent:   \x1b[0;37m{}", final_name);
+            println!("  \x1b[1;33m📂 Target:    \x1b[0;37m{}", args.dir);
+            println!("  \x1b[90m───────────────────────────────────────────\x1b[0m\n");
+            println!("  \x1b[34m[INFO]\x1b[0m Starting download...");
+        }
+
+        let (final_dir, _) = crate::torrent::TorrentTaskSpawner::prepare_output_directory(
+            &session,
+            &torrent_source,
+            &final_name,
+            &args.dir,
+        )
+        .await;
+
+        let opts = librqbit::AddTorrentOptions {
+            overwrite: true,
+            output_folder: Some(final_dir.clone()),
+            ..Default::default()
+        };
+
+        match session.add_torrent(torrent_source, Some(opts)).await {
+            Ok(res) => {
+                if let Some(handle) = res.into_handle() {
+                    let start_time = Instant::now();
+                    let mut last_render = Instant::now();
+
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        let snap =
+                            crate::torrent::TorrentStatsTracker::snapshot(&handle, &final_dir);
+
+                        let now = Instant::now();
+                        if args.log
+                            && (now.duration_since(last_render).as_millis() >= 100 || snap.finished)
+                        {
+                            last_render = now;
+                            TerminalProgressBar::render(
+                                snap.progress_bytes,
+                                snap.total_bytes,
+                                snap.download_speed as f64,
+                                &[], // Worker progress not applicable for torrents
+                            );
+                        }
+
+                        if snap.finished {
+                            break;
+                        }
+                    }
+
+                    let total_elapsed = start_time.elapsed();
+                    println!(
+                        "\n\n\n  \x1b[1;32m✔ Download Complete!\x1b[0m \x1b[90m(Total Time: {})\x1b[0m\n",
+                        format_duration(total_elapsed.as_secs())
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("\n  \x1b[31m✖ Download Failed: {:?}\x1b[0m", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    /// Handles local metalink downloads by parsing the XML and executing underlying tasks.
+    async fn run_metalink(url: String, args: CliArgs, manager: Arc<DownloadManager>) {
+        if args.log {
+            println!("  \x1b[34m[INFO]\x1b[0m Loading Metalink...");
+        }
+
+        let xml_str = match std::fs::read_to_string(&url) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!(
+                    "  \x1b[31m[ERROR]\x1b[0m Failed to read metalink file: {}",
+                    e
+                );
+                std::process::exit(1);
+            }
+        };
+
+        let metalink_files = match crate::metalink::parse_metalink(&xml_str) {
+            Ok(files) => files,
+            Err(e) => {
+                eprintln!(
+                    "  \x1b[31m[ERROR]\x1b[0m Failed to parse metalink XML: {}",
+                    e
+                );
+                std::process::exit(1);
+            }
+        };
+
+        for mfile in metalink_files {
+            if let Some(first_url) = mfile.urls.first() {
+                let mut sub_args = args.clone();
+                if sub_args.out.is_none() {
+                    sub_args.out = mfile.name.clone();
+                }
+                println!(
+                    "  \x1b[34m[INFO]\x1b[0m Processing Metalink File: {}",
+                    sub_args.out.as_deref().unwrap_or("unknown")
+                );
+                Self::run_http(first_url.clone(), sub_args, manager.clone()).await;
+            }
+        }
+    }
+
+    /// Handles standard HTTP/HTTPS chunked downloads.
+    async fn run_http(url: String, args: CliArgs, manager: Arc<DownloadManager>) {
+        if args.log {
             println!("  \x1b[34m[INFO]\x1b[0m Resolving metadata...");
         }
 
@@ -83,6 +224,28 @@ impl DirectDownloader {
             println!("  \x1b[34m[INFO]\x1b[0m Starting download...");
         }
 
+        let mut speed_limit: u64 = 0;
+        if let Some(limit_str) = &args.max_download_limit {
+            let limit_str = limit_str.trim().to_uppercase();
+            if let Some(stripped) = limit_str.strip_suffix('M') {
+                if let Ok(val) = stripped.parse::<u64>() {
+                    speed_limit = val * 1024 * 1024;
+                }
+            } else if let Some(stripped) = limit_str.strip_suffix('K') {
+                if let Ok(val) = stripped.parse::<u64>() {
+                    speed_limit = val * 1024;
+                }
+            } else if let Some(stripped) = limit_str.strip_suffix('G') {
+                if let Ok(val) = stripped.parse::<u64>() {
+                    speed_limit = val * 1024 * 1024 * 1024;
+                }
+            } else if let Ok(val) = limit_str.parse::<u64>() {
+                speed_limit = val;
+            } else {
+                eprintln!("  \x1b[33m[WARNING]\x1b[0m Invalid speed limit: {}. Ignoring.", limit_str);
+            }
+        }
+
         // Step 3: Instantiate DownloadTask descriptor
         let task = DownloadTask {
             urls: vec![final_url.clone()],
@@ -91,7 +254,7 @@ impl DirectDownloader {
             threads: args.split,
             worker_progress: vec![0; args.split],
             headers: vec![],
-            global_limit: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            global_limit: Arc::new(std::sync::atomic::AtomicU64::new(speed_limit)),
             active_threads: Arc::new(std::sync::atomic::AtomicU64::new(1)),
             global_options: std::collections::HashMap::new(),
         };

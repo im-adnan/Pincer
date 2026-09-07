@@ -292,6 +292,7 @@ impl TorrentOrchestrator {
                         }
 
                         EventNotifier::emit(&tx, "pin.onDownloadComplete", &id);
+                        EventNotifier::emit(&tx, "pin.onBtDownloadComplete", &id);
                         break;
                     }
                 }

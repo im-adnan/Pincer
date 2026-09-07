@@ -7,7 +7,7 @@
 //! - **Where it leads to**: Performs housekeeping on task registries and returns session metadata to client applications.
 
 use crate::manager::DownloadManager;
-use crate::models::RPCRequest;
+use crate::models::{RPCError, RPCRequest};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -16,8 +16,8 @@ pub struct SessionRpcHandlers;
 
 impl SessionRpcHandlers {
     /// Handles `pin.getSessionInfo` RPC method returning a unique session UUID.
-    pub async fn handle_get_session_info(_req: &RPCRequest) -> Option<Value> {
-        Some(json!({
+    pub async fn handle_get_session_info(_req: &RPCRequest) -> Result<Value, RPCError> {
+        Ok(json!({
             "sessionId": uuid::Uuid::new_v4().to_string()
         }))
     }
@@ -26,9 +26,9 @@ impl SessionRpcHandlers {
     pub async fn handle_get_version(
         _req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         let version = manager.get_version();
-        Some(json!({
+        Ok(json!({
             "version": version
         }))
     }
@@ -37,30 +37,30 @@ impl SessionRpcHandlers {
     pub async fn handle_save_session(
         _req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         manager.save_session().await;
-        Some(json!("OK"))
+        Ok(json!("OK"))
     }
 
     /// Handles `pin.purgeDownloadResult` RPC method clearing completed/error tasks from memory.
     pub async fn handle_purge_download_result(
         _req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         manager.purge_download_result().await;
-        Some(json!("OK"))
+        Ok(json!("OK"))
     }
 
     /// Handles `pin.removeDownloadResult` RPC method removing an individual stopped task.
     pub async fn handle_remove_download_result(
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         if let Some(params) = &req.params {
             if let Some(params_array) = params.as_array() {
                 let gid = if params_array.len() >= 2
                     && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap().contains(':')
+                    && params_array[0].as_str().unwrap_or("").contains(':')
                 {
                     params_array.get(1).and_then(|v| v.as_str())
                 } else {
@@ -69,10 +69,13 @@ impl SessionRpcHandlers {
 
                 if let Some(gid) = gid {
                     let success = manager.remove_download_result(gid).await;
-                    return Some(serde_json::to_value(success).unwrap());
+                    return Ok(serde_json::to_value(success).unwrap_or(Value::Null));
                 }
             }
         }
-        None
+        Err(RPCError {
+            code: -32602,
+            message: "Missing GID parameter".to_string(),
+        })
     }
 }

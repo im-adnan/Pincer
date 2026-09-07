@@ -7,7 +7,7 @@
 //! - **Where it leads to**: Returns structured file lists, server speed metrics, or URI modification counts to client applications.
 
 use crate::manager::DownloadManager;
-use crate::models::{PincerFile, PincerServer, PincerServerItem, PincerUri, RPCRequest};
+use crate::models::{PincerFile, PincerServer, PincerServerItem, PincerUri, RPCError, RPCRequest};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -16,30 +16,37 @@ pub struct IntrospectionHandlers;
 
 impl IntrospectionHandlers {
     /// Extracts the target task GID from request parameters, skipping any leading authentication token.
-    fn extract_gid(req: &RPCRequest) -> Option<&str> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                if params_array.len() >= 2
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap().contains(':')
-                {
-                    params_array.get(1).and_then(|v| v.as_str())
-                } else {
-                    params_array.first().and_then(|v| v.as_str())
-                }
-            } else {
-                None
-            }
+    fn extract_gid(req: &RPCRequest) -> Result<&str, RPCError> {
+        let params = req.params.as_ref().ok_or_else(|| RPCError {
+            code: -32602,
+            message: "Missing params".to_string(),
+        })?;
+
+        let params_array = params.as_array().ok_or_else(|| RPCError {
+            code: -32602,
+            message: "Params must be an array".to_string(),
+        })?;
+
+        let gid = if params_array.len() >= 2
+            && params_array[0].is_string()
+            && params_array[0].as_str().unwrap_or("").contains(':')
+        {
+            params_array.get(1).and_then(|v| v.as_str())
         } else {
-            None
-        }
+            params_array.first().and_then(|v| v.as_str())
+        };
+
+        gid.ok_or_else(|| RPCError {
+            code: -32602,
+            message: "Missing GID parameter".to_string(),
+        })
     }
 
     /// Handles `pin.getFiles` RPC method returning file list and selected states.
     pub async fn handle_get_files(
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         let gid = Self::extract_gid(req)?;
         if let Some(status) = manager.get_task(gid).await {
             let mut files = Vec::new();
@@ -62,16 +69,19 @@ impl IntrospectionHandlers {
                     uris,
                 });
             }
-            return Some(serde_json::to_value(files).unwrap());
+            return Ok(serde_json::to_value(files).unwrap_or(Value::Null));
         }
-        None
+        Err(RPCError {
+            code: 1,
+            message: "Active Download not found".to_string(),
+        })
     }
 
     /// Handles `pin.getUris` RPC method returning all source mirror URLs for a task.
     pub async fn handle_get_uris(
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         let gid = Self::extract_gid(req)?;
         if let Some(status) = manager.get_task(gid).await {
             let mut uris = Vec::new();
@@ -83,16 +93,19 @@ impl IntrospectionHandlers {
                     });
                 }
             }
-            return Some(serde_json::to_value(uris).unwrap());
+            return Ok(serde_json::to_value(uris).unwrap_or(Value::Null));
         }
-        None
+        Err(RPCError {
+            code: 1,
+            message: "Active Download not found".to_string(),
+        })
     }
 
     /// Handles `pin.getServers` RPC method returning connection speed stats per server.
     pub async fn handle_get_servers(
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         let gid = Self::extract_gid(req)?;
         if let Some(status) = manager.get_task(gid).await {
             let mut servers = Vec::new();
@@ -110,38 +123,61 @@ impl IntrospectionHandlers {
                     servers: items,
                 });
             }
-            return Some(serde_json::to_value(servers).unwrap());
+            return Ok(serde_json::to_value(servers).unwrap_or(Value::Null));
         }
-        None
+        Err(RPCError {
+            code: 1,
+            message: "Active Download not found".to_string(),
+        })
+    }
+
+    /// Handles `pin.getPeers` RPC method.
+    /// Note: librqbit does not expose individual peer IPs easily, so we return an empty array.
+    pub async fn handle_get_peers(
+        req: &RPCRequest,
+        manager: &Arc<DownloadManager>,
+    ) -> Result<Value, RPCError> {
+        let gid = Self::extract_gid(req)?;
+        if manager.get_task(gid).await.is_some() {
+            // Stubbed empty peer list as librqbit abstracts this
+            return Ok(json!([]));
+        }
+        Err(RPCError {
+            code: 1,
+            message: "Active Download not found".to_string(),
+        })
     }
 
     /// Handles `pin.changePosition` RPC method for queue position adjustments.
-    pub async fn handle_change_position(req: &RPCRequest) -> Option<Value> {
+    pub async fn handle_change_position(req: &RPCRequest) -> Result<Value, RPCError> {
         if let Some(params) = &req.params {
             if let Some(params_array) = params.as_array() {
                 let has_token = !params_array.is_empty()
                     && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap().contains(':');
+                    && params_array[0].as_str().unwrap_or("").contains(':');
                 let offset = if has_token { 1 } else { 0 };
 
                 if params_array.len() >= offset + 3 {
-                    return Some(json!(0));
+                    return Ok(json!(0));
                 }
             }
         }
-        None
+        Err(RPCError {
+            code: -32602,
+            message: "Missing or invalid parameters".to_string(),
+        })
     }
 
     /// Handles `pin.changeUri` RPC method for dynamically removing and adding mirror URLs.
     pub async fn handle_change_uri(
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         if let Some(params) = &req.params {
             if let Some(params_array) = params.as_array() {
                 let has_token = !params_array.is_empty()
                     && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap().contains(':');
+                    && params_array[0].as_str().unwrap_or("").contains(':');
                 let offset = if has_token { 1 } else { 0 };
 
                 if params_array.len() >= offset + 4 {
@@ -174,12 +210,15 @@ impl IntrospectionHandlers {
                         .change_uri(gid, file_index, del_uris, add_uris)
                         .await
                     {
-                        Ok((del, add)) => Some(json!([del, add])),
-                        Err(e) => Some(json!({ "error": e })),
+                        Ok((del, add)) => Ok(json!([del, add])),
+                        Err(e) => Ok(json!({ "error": e })),
                     };
                 }
             }
         }
-        None
+        Err(RPCError {
+            code: -32602,
+            message: "Missing or invalid parameters".to_string(),
+        })
     }
 }

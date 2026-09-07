@@ -108,6 +108,7 @@ impl TaskRemovalManager {
         tasks: &RwLock<HashMap<String, TaskControl>>,
         torrent_handles: &RwLock<HashMap<String, Arc<ManagedTorrent>>>,
         session: Option<&Arc<Session>>,
+        tx: &tokio::sync::broadcast::Sender<String>,
     ) -> bool {
         let is_torrent = {
             let tasks_guard = tasks.read().await;
@@ -128,8 +129,11 @@ impl TaskRemovalManager {
         }
 
         let mut tasks_guard = tasks.write().await;
-        if let Some(control) = tasks_guard.remove(id) {
+        if let Some(control) = tasks_guard.get_mut(id) {
             control.token.cancel();
+            control.status.status = "removed".to_string();
+            super::notifier::EventNotifier::emit(tx, "pin.onDownloadStop", id);
+            tasks_guard.remove(id);
             true
         } else {
             false
@@ -180,6 +184,7 @@ impl TaskRemovalManager {
         tasks: &RwLock<HashMap<String, TaskControl>>,
         torrent_handles: &RwLock<HashMap<String, Arc<ManagedTorrent>>>,
         session: Option<&Arc<Session>>,
+        tx: &tokio::sync::broadcast::Sender<String>,
     ) -> bool {
         let is_torrent = {
             let tasks_guard = tasks.read().await;
@@ -200,8 +205,11 @@ impl TaskRemovalManager {
         }
 
         let mut tasks_guard = tasks.write().await;
-        if let Some(control) = tasks_guard.remove(id) {
+        if let Some(control) = tasks_guard.get_mut(id) {
             control.token.cancel();
+            control.status.status = "removed".to_string();
+            super::notifier::EventNotifier::emit(tx, "pin.onDownloadStop", id);
+            let control = tasks_guard.remove(id).unwrap();
 
             let files = control.status.files.clone();
             let dir = control.status.dir.clone();

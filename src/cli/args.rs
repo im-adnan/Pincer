@@ -31,6 +31,8 @@ pub struct CliArgs {
     pub log: bool,
     /// Optional target format for post-download transcoding (e.g. mp4, mp3, pdf).
     pub format: Option<String>,
+    /// Optional speed limit suffix string (e.g. 5M, 500K)
+    pub max_download_limit: Option<String>,
 }
 
 impl CliArgs {
@@ -52,6 +54,7 @@ impl CliArgs {
         let mut split = 4;
         let mut log = false;
         let mut format = None;
+        let mut max_download_limit = None;
 
         let mut parser = lexopt::Parser::from_env();
         while let Some(arg) = parser.next()? {
@@ -95,6 +98,11 @@ impl CliArgs {
                     format = Some(parser.value()?.string()?);
                 }
 
+                // Speed limit: --max-download-limit <LIMIT>
+                Long("max-download-limit") | Long("max-overall-download-limit") => {
+                    max_download_limit = Some(parser.value()?.string()?);
+                }
+
                 // Version flag: -v, -V, --version
                 Short('v') | Short('V') | Long("version") => {
                     println!("pincer {}", env!("CARGO_PKG_VERSION"));
@@ -104,7 +112,7 @@ impl CliArgs {
                 // Help flag: -h, --help
                 Short('h') | Long("help") => {
                     println!("Pincer {}", env!("CARGO_PKG_VERSION"));
-                    println!("Usage: pincer [OPTIONS] [URL]");
+                    println!("Usage: pincer [OPTIONS] [URL | .torrent | .metalink | magnet:?]");
                     println!();
                     println!("Options:");
                     println!("  -p, --port, --rpc-listen-port <PORT>  Set RPC WebSocket listener port (default: 6800)");
@@ -115,6 +123,7 @@ impl CliArgs {
                     println!("  -o, --out <FILENAME>                  Output filename");
                     println!("  -s, --split <N>                       Number of connection threads (default: 4)");
                     println!("  -f, --format <FMT>                    Transcode output format (mp4, mp3, pdf, etc.)");
+                    println!("      --max-download-limit <SPEED>      Set speed limit (e.g. 5M, 500K)");
                     println!("  -l, --log                             Enable ANSI terminal progress rendering");
                     println!("  -v, --version                         Print version information");
                     println!("  -h, --help                            Print help message");
@@ -144,6 +153,7 @@ impl CliArgs {
             split,
             log,
             format,
+            max_download_limit,
         })
     }
 }

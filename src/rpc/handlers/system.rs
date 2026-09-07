@@ -7,7 +7,7 @@
 //! - **Where it leads to**: Returns introspection arrays or batch multicall results to clients and terminates the server process when shutdown is invoked.
 
 use crate::manager::DownloadManager;
-use crate::models::{RPCRequest, RPCResponse};
+use crate::models::{RPCError, RPCRequest, RPCResponse};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -23,31 +23,34 @@ impl SystemRpcHandlers {
             "pin.addMetalink",
             "pin.remove",
             "pin.removeAndFile",
-            "pin.forceRemove",
             "pin.pause",
-            "pin.unpause",
+            "pin.forcePause",
             "pin.pauseAll",
+            "pin.forcePauseAll",
+            "pin.unpause",
             "pin.unpauseAll",
-            "pin.resolveUrl",
-            "pin.resolveTorrent",
             "pin.tellStatus",
+            "pin.getUris",
+            "pin.getFiles",
+            "pin.getPeers",
+            "pin.getServers",
             "pin.tellActive",
             "pin.tellWaiting",
             "pin.tellStopped",
-            "pin.getGlobalStat",
-            "pin.changeOption",
+            "pin.changePosition",
+            "pin.changeUri",
             "pin.getOption",
-            "pin.changeGlobalOption",
+            "pin.changeOption",
             "pin.getGlobalOption",
-            "pin.getFiles",
-            "pin.getUris",
-            "pin.getServers",
-            "pin.getSessionInfo",
+            "pin.changeGlobalOption",
+            "pin.getGlobalStat",
             "pin.purgeDownloadResult",
             "pin.removeDownloadResult",
             "pin.getVersion",
-            "pin.saveSession",
+            "pin.getSessionInfo",
             "pin.shutdown",
+            "pin.forceShutdown",
+            "pin.saveSession",
             "system.listMethods",
             "system.listNotifications",
             "system.multicall"
@@ -66,13 +69,22 @@ impl SystemRpcHandlers {
     }
 
     /// Handles `pin.shutdown` RPC method, terminating the server process gracefully after a short delay.
-    pub async fn handle_shutdown() -> Option<Value> {
+    pub async fn handle_shutdown() -> Result<Value, RPCError> {
         println!("Received shutdown command. Gracefully shutting down...");
         tokio::spawn(async {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
             std::process::exit(0);
         });
-        Some(json!("OK"))
+        Ok(json!("OK"))
+    }
+
+    /// Handles `pin.forceShutdown` RPC method.
+    pub async fn handle_force_shutdown() -> Result<Value, RPCError> {
+        tokio::spawn(async {
+            // Immediate exit without saving session or graceful teardown
+            std::process::exit(1);
+        });
+        Ok(json!("OK"))
     }
 
     /// Handles `system.multicall` RPC method, executing multiple JSON-RPC calls in a single batch request.
@@ -80,7 +92,7 @@ impl SystemRpcHandlers {
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
         dispatch_fn: F,
-    ) -> Option<Value>
+    ) -> Result<Value, RPCError>
     where
         F: Fn(RPCRequest, Arc<DownloadManager>) -> Fut,
         Fut: std::future::Future<Output = RPCResponse<Value>>,
@@ -89,7 +101,7 @@ impl SystemRpcHandlers {
             if let Some(params_array) = params.as_array() {
                 let multicall_array = if params_array.len() >= 2
                     && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap().contains(':')
+                    && params_array[0].as_str().unwrap_or("").contains(':')
                 {
                     params_array.get(1).and_then(|v| v.as_array())
                 } else {
@@ -118,14 +130,17 @@ impl SystemRpcHandlers {
                             if let Some(r) = res.result {
                                 results.push(json!([r]));
                             } else if let Some(e) = res.error {
-                                results.push(serde_json::to_value(e).unwrap());
+                                results.push(serde_json::to_value(e).unwrap_or(Value::Null));
                             }
                         }
                     }
-                    return Some(serde_json::to_value(results).unwrap());
+                    return Ok(serde_json::to_value(results).unwrap_or(Value::Null));
                 }
             }
         }
-        None
+        Err(RPCError {
+            code: -32602,
+            message: "Missing or invalid multicall parameters".to_string(),
+        })
     }
 }

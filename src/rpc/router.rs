@@ -25,7 +25,7 @@ impl MethodRouter {
     ) -> RPCResponse<serde_json::Value> {
         let method = req.method.as_str();
 
-        let result = match method {
+        let result_or_err = match method {
             // Task Query
             "pin.tellActive" => TaskQueryHandlers::handle_tell_active(&req, &manager).await,
             "pin.tellWaiting" => TaskQueryHandlers::handle_tell_waiting(&req, &manager).await,
@@ -36,6 +36,8 @@ impl MethodRouter {
             // Task Lifecycle
             "pin.pause" => TaskLifecycleHandlers::handle_pause(&req, &manager).await,
             "pin.pauseAll" => TaskLifecycleHandlers::handle_pause_all(&req, &manager).await,
+            "pin.forcePause" => TaskLifecycleHandlers::handle_force_pause(&req, &manager).await,
+            "pin.forcePauseAll" => TaskLifecycleHandlers::handle_force_pause_all(&req, &manager).await,
             "pin.unpause" => TaskLifecycleHandlers::handle_unpause(&req, &manager).await,
             "pin.unpauseAll" => TaskLifecycleHandlers::handle_unpause_all(&req, &manager).await,
             "pin.remove" => TaskLifecycleHandlers::handle_remove(&req, &manager).await,
@@ -66,6 +68,7 @@ impl MethodRouter {
             "pin.getFiles" => IntrospectionHandlers::handle_get_files(&req, &manager).await,
             "pin.getUris" => IntrospectionHandlers::handle_get_uris(&req, &manager).await,
             "pin.getServers" => IntrospectionHandlers::handle_get_servers(&req, &manager).await,
+            "pin.getPeers" => IntrospectionHandlers::handle_get_peers(&req, &manager).await,
 
             // Metadata Resolution
             "pin.resolveUrl" => ResolveHandlers::handle_resolve_url(&req, &manager).await,
@@ -82,26 +85,26 @@ impl MethodRouter {
                 SessionRpcHandlers::handle_remove_download_result(&req, &manager).await
             }
             "pin.shutdown" => SystemRpcHandlers::handle_shutdown().await,
+            "pin.forceShutdown" => SystemRpcHandlers::handle_force_shutdown().await,
 
             // System Reflection
-            "system.listMethods" => Some(SystemRpcHandlers::list_methods()),
-            "system.listNotifications" => Some(SystemRpcHandlers::list_notifications()),
+            "system.listMethods" => Ok(SystemRpcHandlers::list_methods()),
+            "system.listNotifications" => Ok(SystemRpcHandlers::list_notifications()),
             "system.multicall" => {
                 SystemRpcHandlers::handle_multicall(&req, &manager, |sub_req, mgr| {
                     Box::pin(Self::dispatch(sub_req, mgr))
                 })
                 .await
             }
-            _ => None,
-        };
-
-        let error = if result.is_none() {
-            Some(RPCError {
+            _ => Err(RPCError {
                 code: -32601,
                 message: "Method not found".to_string(),
-            })
-        } else {
-            None
+            }),
+        };
+
+        let (result, error) = match result_or_err {
+            Ok(val) => (Some(val), None),
+            Err(err) => (None, Some(err)),
         };
 
         RPCResponse {

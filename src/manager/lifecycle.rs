@@ -62,10 +62,22 @@ impl TaskLifecycleManager {
             control.status.download_speed = "0".to_string();
             control.status.upload_speed = Some("0".to_string());
             EventNotifier::emit(tx, "pin.onDownloadPause", id);
+            EventNotifier::emit(tx, "pin.onDownloadStop", id);
             true
         } else {
             false
         }
+    }
+
+    /// Forcefully pauses an individual task (acts identically to pause_task in async environment).
+    pub async fn force_pause_task(
+        id: &str,
+        tasks: &RwLock<HashMap<String, TaskControl>>,
+        torrent_handles: &RwLock<HashMap<String, Arc<ManagedTorrent>>>,
+        session: Option<&Arc<Session>>,
+        tx: &broadcast::Sender<String>,
+    ) -> bool {
+        Self::pause_task(id, tasks, torrent_handles, session, tx).await
     }
 
     /// Pauses all active and waiting downloads across the entire engine.
@@ -94,8 +106,17 @@ impl TaskLifecycleManager {
                 control.status.download_speed = "0".to_string();
                 control.status.upload_speed = Some("0".to_string());
                 EventNotifier::emit(tx, "pin.onDownloadPause", gid);
+                EventNotifier::emit(tx, "pin.onDownloadStop", gid);
             }
         }
+    }
+
+    /// Forcefully pauses all downloads (acts identically to pause_all).
+    pub async fn force_pause_all(
+        tasks: &RwLock<HashMap<String, TaskControl>>,
+        tx: &broadcast::Sender<String>,
+    ) {
+        Self::pause_all(tasks, tx).await
     }
 
     /// Resumes a paused BitTorrent task session handle.

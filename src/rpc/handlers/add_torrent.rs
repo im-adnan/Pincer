@@ -7,7 +7,7 @@
 //! - **Where it leads to**: Returns the generated torrent GID in a JSON-RPC response value.
 
 use crate::manager::DownloadManager;
-use crate::models::RPCRequest;
+use crate::models::{RPCError, RPCRequest};
 use base64::{engine::general_purpose, Engine as _};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -18,14 +18,17 @@ pub struct AddTorrentHandler;
 
 impl AddTorrentHandler {
     /// Decodes a Base64 `.torrent` file payload and registers the task with `DownloadManager`.
-    pub async fn handle(req: &RPCRequest, manager: &Arc<DownloadManager>) -> Option<Value> {
+    pub async fn handle(
+        req: &RPCRequest,
+        manager: &Arc<DownloadManager>,
+    ) -> Result<Value, RPCError> {
         let mut return_ids = Vec::new();
         if let Some(params) = &req.params {
             if let Some(params_array) = params.as_array() {
                 if !params_array.is_empty() {
                     let (base64_val, options_val) = if params_array.len() >= 2
                         && params_array[0].is_string()
-                        && params_array[0].as_str().unwrap().contains(':')
+                        && params_array[0].as_str().unwrap_or("").contains(':')
                     {
                         (&params_array[1], params_array.get(2))
                     } else {
@@ -70,12 +73,14 @@ impl AddTorrentHandler {
         }
 
         if return_ids.is_empty() {
-            let fallback_id = uuid::Uuid::new_v4().to_string();
-            Some(serde_json::to_value(fallback_id).unwrap())
+            Err(RPCError {
+                code: -32602,
+                message: "Failed to add torrent".to_string(),
+            })
         } else if return_ids.len() == 1 {
-            Some(serde_json::to_value(&return_ids[0]).unwrap())
+            Ok(serde_json::to_value(&return_ids[0]).unwrap_or(Value::Null))
         } else {
-            Some(serde_json::to_value(return_ids).unwrap())
+            Ok(serde_json::to_value(return_ids).unwrap_or(Value::Null))
         }
     }
 }

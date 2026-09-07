@@ -7,7 +7,7 @@
 //! - **Where it leads to**: Returns structured `ResolveResponse` objects detailing inferred filenames, sizes, and torrent file trees.
 
 use crate::manager::DownloadManager;
-use crate::models::RPCRequest;
+use crate::models::{RPCError, RPCRequest};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -19,12 +19,12 @@ impl ResolveHandlers {
     pub async fn handle_resolve_url(
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         if let Some(params) = &req.params {
             if let Some(params_array) = params.as_array() {
                 let url = if params_array.len() >= 2
                     && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap().contains(':')
+                    && params_array[0].as_str().unwrap_or("").contains(':')
                 {
                     params_array.get(1).and_then(|v| v.as_str())
                 } else {
@@ -33,25 +33,28 @@ impl ResolveHandlers {
 
                 if let Some(url) = url {
                     return match manager.resolve_url(url.to_string()).await {
-                        Ok(res) => Some(serde_json::to_value(res).unwrap()),
-                        Err(e) => Some(json!({ "error": e })),
+                        Ok(res) => Ok(serde_json::to_value(res).unwrap_or(Value::Null)),
+                        Err(e) => Ok(json!({ "error": e })),
                     };
                 }
             }
         }
-        None
+        Err(RPCError {
+            code: -32602,
+            message: "Missing URL parameter".to_string(),
+        })
     }
 
     /// Handles `pin.resolveTorrent` RPC method, inspecting Base64 `.torrent` payloads.
     pub async fn handle_resolve_torrent(
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
-    ) -> Option<Value> {
+    ) -> Result<Value, RPCError> {
         if let Some(params) = &req.params {
             if let Some(params_array) = params.as_array() {
                 let base64_str = if params_array.len() >= 2
                     && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap().contains(':')
+                    && params_array[0].as_str().unwrap_or("").contains(':')
                 {
                     params_array.get(1).and_then(|v| v.as_str())
                 } else {
@@ -60,12 +63,15 @@ impl ResolveHandlers {
 
                 if let Some(base64_str) = base64_str {
                     return match manager.resolve_torrent_base64(base64_str.to_string()).await {
-                        Ok(res) => Some(serde_json::to_value(res).unwrap()),
-                        Err(e) => Some(json!({ "error": e })),
+                        Ok(res) => Ok(serde_json::to_value(res).unwrap_or(Value::Null)),
+                        Err(e) => Ok(json!({ "error": e })),
                     };
                 }
             }
         }
-        None
+        Err(RPCError {
+            code: -32602,
+            message: "Missing Base64 payload parameter".to_string(),
+        })
     }
 }

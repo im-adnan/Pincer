@@ -1,6 +1,55 @@
 # Changelog
 
-## [Unreleased]
-### Fixed
-- Fixed an issue in `manager.rs` where downloading files with query parameters in their URLs (e.g. from Pexels) caused an unnecessary file conversion attempt to fail. The extension parsing now correctly ignores query strings and URL fragments.
-- Made format conversion error handling more robust: if a conversion is unsupported or fails, it will now gracefully restore the original downloaded file and complete successfully, rather than abruptly failing the download after 100% completion.
+- **2026-09-08** : `8ea470d` - feat: update test cleanup script to remove session files upon completion
+- **2026-09-08** : `ee54fbf` - refactor: enhance test runner output with ANSI styling and recursive temporary directory management
+- **2026-09-08** : `5f488e0` - refactor: modularize RPC test suite and modernize CLI code formatting
+- **2026-09-08** : `3b1b26b` - refactor: reorganize documentation structure and simplify directory hierarchy
+- **2026-09-08** : `a89c2bb` - refactor: update RPC handlers to use Result types for error propagation and Updated CLI to have all the RPC featuere
+- **2026-09-07** : `e784fc4` - fix: remove redundant file existence check before safe deletion
+- **2026-09-07** : `0659ac7` - feat: add pin.mergeFiles RPC method to merge audio and video streams via ffmpeg
+- **2026-08-30** : `c7034eb` - docs: update README with project promotion and contribution guidelines
+- **2026-08-30** : `edaeb9a` - refactor: implement platform-specific no-op for remove_quarantine on non-macOS systems
+- **2026-08-30** : `b19cd97` - refactor: modularize engine architecture by decoupling components into granular manager, rpc, resolver, and converter modules
+- **2026-07-27** : `1911d0d` - refactor: improve code formatting and idiomatic usage in manager tasks logic
+- **2026-07-17** : `e6f9d16` - feat: delete unselected files and empty directories upon task completion
+- **2026-07-17** : `cf4096a` - feat: add upload speed tracking and improve torrent directory and pause management
+- **2026-07-16** : `f911ebe` - feat: integrate librqbit to enable bittorrent download support in the manager
+- **2026-07-05** : `ead0698` - docs: update README and BUILD_AND_RELEASE to clarify GITHUB_OWNER and GITHUB_REPO usage for automation scripts
+- **2026-07-05** : `aa3c543` - fix: update clone URLs in README and BUILD_AND_RELEASE documentation
+- **2026-07-04** : `592c7c2` - fix: update repository and homepage URLs in Cargo.toml
+- **2026-07-01** : `9114d4e` - fix: sanitize URLs for extension parsing and improve error handling for file conversion failures
+- **2026-07-01** : `c8736d3` - refactor: apply consistent rustfmt line breaks to error and path-handling format strings
+- **2026-06-30** : `4976213` - fix: improve error handling and status reporting for file format conversions by updating perform_format_conversion to return results
+- **2026-06-28** : `b8d1c2e` - feat: automatically update Cargo.toml version from git tag during release workflow
+- **2026-06-24** : `5fe7ab1` - feat: implement staged download architecture and update task progress tracking in manager
+- **2026-06-23** : `1728891` - feat: implement macOS .download bundle support for proper Finder integration and session state persistence
+- **2026-06-23** : `1448ca9` - refactor: implement robust .pincer file handling with proper cleanup, renaming, and quarantine attribute removal
+- **2026-06-21** : `4ac5b88` - docs: document native safe restarts for non-resumable tasks and FIFO queue scheduling
+- **2026-06-21** : `72f49b0` - refactor: improve code readability in manager.rs by reformatting multi-line expressions and function signatures
+- **2026-06-21** : `08fdd97` - feat: implement task queuing system with concurrency limits and added metadata fields
+- **2026-06-19** : `72f1e33` - chore: update Cargo.lock dependencies
+- **2026-06-19** : `c1db800` - chore: refactor release process to use git-tag based versioning and update project documentation
+- **2026-06-19** : `c123ab2` - refactor: consolidate CI build, linting, and test steps into a unified Python test runner script
+- **2026-06-19** : `881db22` - feat: implement automated release script and consolidate build documentation into new guide
+- **2026-06-19** : `8a59190` - feat: implement daemon mode, Metalink support, and FTP/SFTP protocol integration
+- **2026-06-19** : `94c29ff` - feat: implement multi-source download support with Metalink parsing and automated fallback logic
+- **2026-06-19** : `2525488` - feat: add --daemon flag to run engine as a background process
+- **2026-06-19** : `3db2157` - refactor: introduce ProtocolAdapter trait to support FTP and SFTP downloads alongside HTTP
+- **2026-06-19** : `2bfb9ec` - feat(core): implement parameterized URI and batch downloading
+- **2026-06-19** : `93e4db2` - feat: add RPC authentication support and global proxy/user-agent configuration options
+- **2026-06-19** : `b503b23` - feat: add --port CLI option to configure RPC server port
+- **2026-06-19** : `1fb6562` - feat: add file_type field to task models and manager status processing
+- **2026-06-19** : `0d5eccf` - docs: introduce automated test runner and update testing documentation
+- **2026-06-19** : `c920194` - refactor: implement path sanitization and update tests to use a temporary directory to prevent path traversal vulnerabilities.
+- **2026-06-19** : `dc161d5` - test: add CLI, RPC path-traversal security, and pause/resume integrity tests
+- **2026-06-19** : `baa1012` - fix: correct pause/resume range logic and handle premature stream termination
+- **2026-06-19** : `5c2b159` - fix: resolve filename conflicts where multiple copies were created  by incorporating task IDs
+- **2026-06-19** : `07d217a` - feat: implement automatic file format conversion using system tools and add a converting status state
+- **2026-06-19** : `bfac85a` - feat: extract download metadata parsing and add file extension inference based on content type
+- **2026-05-22** : `7d8e272` - test: update CLI and RPC test suites to use valid remote test URLs
+- **2026-05-22** : `71e4120` - refactor: replace iterative methods with idiomatic alternatives and improve math safety across the codebase
+- **2026-05-22** : `3995c69` - refactor: apply consistent code formatting across manager, rpc, task, and main modules
+- **2026-05-22** : `e6b9b5e` - ci: add Python environment setup and integration tests for CLI and RPC components
+- **2026-05-22** : `e8c2567` - refactor: clean up imports and reformat code in worker download loop
+- **2026-05-22** : `cf76a37` - docs: add  function comments across the codebase
+- **2026-05-22** : `036e11e` - refactor: standardizing documentation & Adding Licence

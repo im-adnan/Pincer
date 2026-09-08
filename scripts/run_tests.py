@@ -216,7 +216,12 @@ def main():
         for td in temp_dirs:
             if os.path.exists(td):
                 shutil.rmtree(td, ignore_errors=True)
-        print("\x1b[1;32m✔ Cleaned up all temporary directories successfully!\x1b[0m")
+        if os.path.exists(session_path):
+            try:
+                os.remove(session_path)
+            except OSError:
+                pass
+        print("\x1b[1;32m✔ Cleaned up all temporary directories and session file successfully!\x1b[0m")
     else:
         try:
             user_input = input("\x1b[1;33mDo you want to clean up all temporary test files? (Y/N):\x1b[0m ").strip().lower()
@@ -225,7 +230,12 @@ def main():
                 for td in temp_dirs:
                     if os.path.exists(td):
                         shutil.rmtree(td, ignore_errors=True)
-                print("\x1b[1;32m✔ Cleaned up all temporary directories successfully!\x1b[0m")
+                if os.path.exists(session_path):
+                    try:
+                        os.remove(session_path)
+                    except OSError:
+                        pass
+                print("\x1b[1;32m✔ Cleaned up all temporary directories and session file successfully!\x1b[0m")
             else:
                 print("\x1b[36mKeeping temporary files.\x1b[0m")
         except KeyboardInterrupt:

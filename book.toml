@@ -1,0 +1,15 @@
+[book]
+authors = ["Pincer Engine Contributors"]
+language = "en"
+multilingual = false
+src = "docs"
+title = "Pincer Engine Documentation"
+
+[output.html]
+git-repository-url = "https://github.com/im-adnan/pincer-engine"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/im-adnan/pincer-engine/edit/main/{path}"
+default-theme = "rust"
+preferred-dark-theme = "navy"
+additional-css = ["theme/custom.css"]
+additional-js = ["theme/custom.js"]

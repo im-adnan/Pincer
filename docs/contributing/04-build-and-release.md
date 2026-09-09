@@ -80,3 +80,26 @@ git push origin <branch-name> --tags
 ```
 
 Pushing the `v*` tag triggers the `.github/workflows/release.yml` GitHub Action, which builds and publishes the pre-compiled `.zip` artifacts to the GitHub Releases page automatically.
+
+---
+
+## Documentation Website (GitHub Pages)
+
+The documentation is hosted on GitHub Pages and powered by **mdBook**. All source markdown files in `docs/` are rendered into an interactive documentation site with dynamic release downloads and bug tracking.
+
+### Local Documentation Preview
+
+To preview the documentation locally with live-reload:
+
+```bash
+# Install mdbook via Cargo
+cargo install mdbook
+
+# Serve and open the documentation at http://localhost:3000
+mdbook serve --open
+```
+
+### Automatic Deployment
+
+Whenever updates to `docs/`, `theme/`, or `book.toml` are pushed to the `main` branch, the `.github/workflows/deploy-docs.yml` workflow automatically builds the documentation site and deploys it to GitHub Pages.
+

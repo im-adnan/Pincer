@@ -1,0 +1,174 @@
+/* Custom styling for Pincer Engine Documentation */
+
+/* Top Navigation Bar Buttons */
+.nav-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border-radius: 6px;
+  text-decoration: none !important;
+  margin-left: 8px;
+  transition: all 0.2s ease;
+  vertical-align: middle;
+}
+
+.nav-btn-bug {
+  background-color: rgba(224, 108, 117, 0.15);
+  color: #e06c75 !important;
+  border: 1px solid rgba(224, 108, 117, 0.3);
+}
+
+.nav-btn-bug:hover {
+  background-color: rgba(224, 108, 117, 0.25);
+  border-color: #e06c75;
+}
+
+.nav-btn-download {
+  background-color: rgba(97, 175, 239, 0.15);
+  color: #61afef !important;
+  border: 1px solid rgba(97, 175, 239, 0.3);
+}
+
+.nav-btn-download:hover {
+  background-color: rgba(97, 175, 239, 0.25);
+  border-color: #61afef;
+}
+
+/* Release Card on Downloads Page */
+.release-card {
+  border: 1px solid var(--table-border-color, #e1e4e8);
+  border-radius: 10px;
+  padding: 24px;
+  margin: 20px 0;
+  background: var(--table-header-bg, rgba(0, 0, 0, 0.03));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.release-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.release-badge {
+  background: #2ea44f;
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  letter-spacing: 0.02em;
+}
+
+.release-date {
+  color: var(--fg, #586069);
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.download-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: #2ea44f;
+  color: #ffffff !important;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none !important;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.download-btn:hover {
+  background: #2c974b;
+  transform: translateY(-1px);
+}
+
+.download-icon {
+  font-size: 1.3rem;
+}
+
+.download-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.download-text small {
+  font-size: 0.72rem;
+  font-weight: 400;
+  opacity: 0.9;
+}
+
+.github-release-btn {
+  color: var(--fg, #0366d6);
+  font-size: 0.9rem;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.github-release-btn:hover {
+  text-decoration: underline;
+}
+
+/* Bug Reporting Box */
+.bug-report-box {
+  border-left: 4px solid #e06c75;
+  background: var(--table-header-bg, rgba(224, 108, 117, 0.05));
+  border-radius: 0 8px 8px 0;
+  padding: 18px 22px;
+  margin: 24px 0;
+}
+
+.bug-report-box h3 {
+  margin-top: 0;
+  color: #e06c75;
+}
+
+.bug-report-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.bug-btn {
+  display: inline-block;
+  background: #e06c75;
+  color: #ffffff !important;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.88rem;
+  text-decoration: none !important;
+  transition: opacity 0.15s ease;
+}
+
+.bug-btn:hover {
+  opacity: 0.9;
+}
+
+.issues-list-link {
+  color: var(--fg, #0366d6);
+  font-size: 0.88rem;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.issues-list-link:hover {
+  text-decoration: underline;
+}

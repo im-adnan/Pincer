@@ -9,6 +9,7 @@ Get the latest pre-compiled binaries for Pincer Engine, inspect versions, or rep
 <div id="release-card" class="release-card">
   <div class="release-header">
     <span class="release-badge" id="release-tag">Fetching latest version...</span>
+    <span class="release-license-badge">GPL-3.0</span>
     <span class="release-date" id="release-date"></span>
   </div>
   <p id="release-description">Loading release details from GitHub...</p>

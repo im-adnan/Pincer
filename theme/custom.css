@@ -172,3 +172,43 @@
 .issues-list-link:hover {
   text-decoration: underline;
 }
+
+/* Sidebar GPLv3 License Footer */
+.sidebar-license {
+  padding: 16px 15px 20px 15px;
+  margin-top: 24px;
+  border-top: 1px solid var(--sidebar-separator, rgba(0, 0, 0, 0.08));
+  text-align: center;
+}
+
+.sidebar-license img {
+  display: inline-block;
+  opacity: 0.9;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  border-radius: 3px;
+}
+
+.sidebar-license img:hover {
+  opacity: 1;
+  transform: scale(1.03);
+}
+
+.sidebar-license .license-label {
+  font-size: 0.72rem;
+  color: var(--sidebar-fg, #666);
+  opacity: 0.8;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+.release-license-badge {
+  display: inline-block;
+  background: rgba(46, 164, 79, 0.15);
+  color: #2ea44f;
+  border: 1px solid rgba(46, 164, 79, 0.3);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+}

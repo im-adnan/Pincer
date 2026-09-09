@@ -1,7 +1,7 @@
 # Pincer — High-Performance Rust Download Engine
 
 [![Rust](https://img.shields.io/badge/rust-stable-brightgreen.svg)](https://www.rust-lang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
 [![User Guide](https://img.shields.io/badge/Docs-User%20Guide-orange.svg)](docs/USER_GUIDE.md)
 
 ## Introduction
@@ -84,4 +84,8 @@ If you are building an app on top of Pincer, or want to contribute to the engine
 
 ## License
 
-Pincer is released under the [MIT License](LICENSE).
+[![GNU GPL v3](https://www.gnu.org/graphics/gplv3-127x51.png)](https://www.gnu.org/licenses/gpl-3.0.html)
+
+Pincer Engine is free software: you can redistribute it and/or modify it under the terms of the **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)** as published by the Free Software Foundation.
+
+See the [LICENSE](LICENSE) file for full details.

@@ -75,4 +75,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
   }
+
+  // 3. Inject GNU GPLv3 badge into the mdBook sidebar
+  const sidebar = document.querySelector('.sidebar-scrollbox') || document.querySelector('#sidebar');
+  if (sidebar) {
+    const licenseDiv = document.createElement('div');
+    licenseDiv.className = 'sidebar-license';
+    licenseDiv.innerHTML = `
+      <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener noreferrer" title="Licensed under GNU General Public License v3.0">
+        <img src="https://www.gnu.org/graphics/gplv3-88x31.png" alt="GNU GPLv3" width="88" height="31" />
+      </a>
+      <div class="license-label">Free Software &bull; GPL-3.0</div>
+    `;
+    sidebar.appendChild(licenseDiv);
+  }
 });
+

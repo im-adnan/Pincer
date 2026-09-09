@@ -46,3 +46,12 @@ Everything you need to contribute code to Pincer.
 4. [Build & Release](contributing/04-build-and-release.md) — Compiling from source and cutting releases.
 5. [Roadmap](contributing/05-roadmap.md) — Dependency migration strategy and optimization paths.
 6. [Feature Status](contributing/06-feature-status.md) — What's done, what's next.
+
+---
+
+## License
+
+[![GNU GPL v3](https://www.gnu.org/graphics/gplv3-127x51.png)](https://www.gnu.org/licenses/gpl-3.0.html)
+
+Pincer Engine is free and open-source software licensed under the **[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)** (GPLv3).
+

@@ -53,10 +53,10 @@ curl -fsSL https://raw.githubusercontent.com/grabbit/pincer-engine/main/scripts/
 #### Option 2: Homebrew (macOS)
 If you prefer Homebrew, you can use our custom tap:
 ```bash
-brew tap grabbit/pincer
+brew trust im-adnan/pincer/pincer
+brew tap im-adnan/pincer
 brew install pincer
 ```
-*(Requires the setup of the `homebrew-pincer` repository as documented in the release notes).*
 
 #### Option 3: Build from Source
 ```bash

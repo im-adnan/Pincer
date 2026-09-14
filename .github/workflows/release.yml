@@ -32,11 +32,13 @@ jobs:
           cd target/release
           zip pincer-macos.zip pincer
 
-      - name: Get Version
+      - name: Get Version and Compute Checksum
         id: get_version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          SHA256_SUM=$(shasum -a 256 target/release/pincer-macos.zip | awk '{print $1}')
+          echo "SHA256_SUM=$SHA256_SUM" >> $GITHUB_ENV
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -46,9 +48,12 @@ jobs:
           files: target/release/pincer-macos.zip
           body: |
             ## Pincer Engine Release v${{ env.VERSION }}
-            Automated build for macOS.
+            Automated build for macOS (ARM64).
             
             **Note**: Download the `.zip` file and extract it to get the `pincer` executable.
+            
+            ### Homebrew Details
+            **SHA256 Checksum (macOS):** `${{ env.SHA256_SUM }}`
           draft: false
           prerelease: false
         env:

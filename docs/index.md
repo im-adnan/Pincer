@@ -2,6 +2,10 @@
 
 Welcome to the Pincer Engine docs. Start from the top and work your way down — everything is numbered in reading order.
 
+## Built for Grabbit
+
+I originally developed the Pincer engine to power my native macOS Download Manager, [Grabbit](https://grabbit.fyi/). If you are looking for a beautiful, polished GUI that leverages the full power of this engine, check it out at [grabbit.fyi](https://grabbit.fyi/)!
+
 ---
 
 ## Getting Started

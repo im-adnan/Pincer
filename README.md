@@ -10,6 +10,9 @@
 
 Whether you're downloading a standard web file, a massive BitTorrent package, or an entire server directory via SFTP, Pincer automatically splits the file into pieces and downloads them all at the exact same time using multiple concurrent connections. Built completely in memory-safe Rust, it leverages zero-allocation disk writing to ensure your computer never slows down, even at peak gigabit speeds.
 
+> **Built for Grabbit**
+> I originally developed the Pincer engine to power my native macOS Download Manager, **[Grabbit](https://grabbit.fyi)**. If you are looking for a beautiful, polished GUI that leverages the full power of this engine, check it out at [grabbit.fyi](https://grabbit.fyi)!
+
 > **🌟 Love what you see?**
 > If you find this project interesting, useful, or just want to support open-source Rust development, **please consider leaving a star!** It helps the project grow and reach more amazing contributors like you!
 

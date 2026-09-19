@@ -14,13 +14,6 @@ Get the latest pre-compiled binaries for Pincer Engine, inspect versions, or rep
   </div>
   <p id="release-description">Loading release details from GitHub...</p>
   <div class="download-actions" id="download-actions">
-    <a id="primary-download-btn" class="download-btn" href="https://github.com/im-adnan/pincer-engine/releases/latest/download/pincer-macos.zip">
-      <span class="download-icon">⬇</span>
-      <span class="download-text">
-        <strong>Download for macOS</strong>
-        <small id="asset-name">pincer-macos.zip</small>
-      </span>
-    </a>
     <a class="github-release-btn" href="https://github.com/im-adnan/pincer-engine/releases/latest" target="_blank" rel="noopener noreferrer">
       View Release on GitHub →
     </a>
@@ -31,22 +24,14 @@ Get the latest pre-compiled binaries for Pincer Engine, inspect versions, or rep
 
 ## Quick Installation (macOS)
 
-### 1. Download and Extract
+### 1. Install via Homebrew
 
-You can download the binary using the button above or via terminal:
+You can install Pincer using our custom Homebrew tap:
 
 ```bash
-# Download latest release asset
-curl -LO https://github.com/im-adnan/pincer-engine/releases/latest/download/pincer-macos.zip
-
-# Unzip the archive
-unzip pincer-macos.zip
-
-# Move pincer to your PATH
-sudo mv pincer /usr/local/bin/
-
-# Remove macOS quarantine attribute (if downloaded via browser)
-xattr -d com.apple.quarantine /usr/local/bin/pincer 2>/dev/null || true
+brew trust im-adnan/pincer/pincer
+brew tap im-adnan/pincer
+brew install pincer
 ```
 
 ### 2. Verify Installation

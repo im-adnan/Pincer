@@ -44,21 +44,15 @@ We are actively building the ultimate open-source download engine, and **we want
 
 ### Installation
 
-#### Option 1: macOS Bash Script (Recommended)
-You can instantly install the pre-compiled ARM64 binary into your system `PATH` using our install script:
-```bash
-curl -fsSL https://raw.githubusercontent.com/grabbit/pincer-engine/main/scripts/install.sh | bash
-```
-
-#### Option 2: Homebrew (macOS)
-If you prefer Homebrew, you can use our custom tap:
+#### Homebrew (macOS)
+You can install Pincer using our custom Homebrew tap:
 ```bash
 brew trust im-adnan/pincer/pincer
 brew tap im-adnan/pincer
 brew install pincer
 ```
 
-#### Option 3: Build from Source
+#### Build from Source
 ```bash
 # Clone the repository
 git clone https://github.com/Pincer-Engine/pincer-engine.git

@@ -1,7 +1,7 @@
 [package]
 name = "pincer"
 version = "1.0.0"
-edition = "2021"
+edition = "2024"
 description = "A high-performance, multithreaded, zero-allocation concurrent download engine written in Rust"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/im-adnan/pincer-engine"

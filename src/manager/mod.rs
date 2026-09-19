@@ -24,9 +24,9 @@ pub mod unique_name;
 
 use librqbit::{AddTorrent, ManagedTorrent, Session};
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-use tokio::sync::{broadcast, OnceCell, RwLock};
+use std::sync::atomic::AtomicU64;
+use tokio::sync::{OnceCell, RwLock, broadcast};
 
 // Re-export manager domain handlers
 pub use execution::TaskPostProcessor;
@@ -320,37 +320,36 @@ impl DownloadManager {
         };
 
         if is_torrent {
-            if let Ok(session) = self.get_torrent_session().await {
-                if let Some((handle, token)) = TaskLifecycleManager::unpause_torrent(
+            if let Ok(session) = self.get_torrent_session().await
+                && let Some((handle, token)) = TaskLifecycleManager::unpause_torrent(
                     id,
                     &self.tasks,
                     &self.torrent_handles,
                     &session,
                 )
                 .await
-                {
-                    let session_clone = session.clone();
-                    let tasks_clone = self.tasks.clone();
-                    let global_opts_clone = self.global_options.clone();
-                    let tx_clone = self.tx.clone();
-                    let id_str = id.to_string();
+            {
+                let session_clone = session.clone();
+                let tasks_clone = self.tasks.clone();
+                let global_opts_clone = self.global_options.clone();
+                let tx_clone = self.tx.clone();
+                let id_str = id.to_string();
 
-                    tokio::spawn(async move {
-                        TorrentOrchestrator::run_stats_loop(
-                            id_str,
-                            handle,
-                            token,
-                            session_clone,
-                            tasks_clone,
-                            global_opts_clone,
-                            tx_clone,
-                        )
-                        .await;
-                    });
-                    EventNotifier::emit(&self.tx, "pin.onDownloadStart", id);
-                    self.save_session().await;
-                    return true;
-                }
+                tokio::spawn(async move {
+                    TorrentOrchestrator::run_stats_loop(
+                        id_str,
+                        handle,
+                        token,
+                        session_clone,
+                        tasks_clone,
+                        global_opts_clone,
+                        tx_clone,
+                    )
+                    .await;
+                });
+                EventNotifier::emit(&self.tx, "pin.onDownloadStart", id);
+                self.save_session().await;
+                return true;
             }
             return false;
         }
@@ -672,14 +671,13 @@ impl DownloadManager {
     /// Removes an individual stopped or completed task result from memory.
     pub async fn remove_download_result(&self, id: &str) -> bool {
         let mut tasks_guard = self.tasks.write().await;
-        if let Some(control) = tasks_guard.get(id) {
-            if control.status.status == "complete"
+        if let Some(control) = tasks_guard.get(id)
+            && (control.status.status == "complete"
                 || control.status.status == "error"
-                || control.status.status == "removed"
-            {
-                tasks_guard.remove(id);
-                return true;
-            }
+                || control.status.status == "removed")
+        {
+            tasks_guard.remove(id);
+            return true;
         }
         false
     }

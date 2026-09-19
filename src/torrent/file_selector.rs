@@ -55,10 +55,10 @@ impl TorrentFileSelector {
                     {
                         break;
                     }
-                    if let Ok(mut entries) = p.read_dir() {
-                        if entries.next().is_none() {
-                            let _ = std::fs::remove_dir(p);
-                        }
+                    if let Ok(mut entries) = p.read_dir()
+                        && entries.next().is_none()
+                    {
+                        let _ = std::fs::remove_dir(p);
                     }
                     current_parent = p.parent();
                 }

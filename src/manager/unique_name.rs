@@ -39,10 +39,10 @@ impl UniqueNameGenerator {
         let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         while tasks.values().any(|c| {
-            if let Some(egid) = excluding_gid {
-                if c.status.gid == egid {
-                    return false;
-                }
+            if let Some(egid) = excluding_gid
+                && c.status.gid == egid
+            {
+                return false;
             }
             if let Some(file) = c.status.files.first() {
                 let existing_filename = Path::new(&file.path)

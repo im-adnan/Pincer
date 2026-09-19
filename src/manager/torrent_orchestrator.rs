@@ -9,13 +9,13 @@
 use librqbit::{AddTorrent, AddTorrentOptions, ManagedTorrent, Session};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tokio_util::sync::CancellationToken;
 
 use super::notifier::EventNotifier;
 use super::persistence::SessionPersistence;
 use super::state::TaskControl;
-use crate::models::{default_created_at, TaskStatus, TorrentInfo, TorrentInfoInner};
+use crate::models::{TaskStatus, TorrentInfo, TorrentInfoInner, default_created_at};
 use crate::torrent::{TorrentFileSelector, TorrentStatsTracker, TorrentTaskSpawner};
 
 /// Coordinates BitTorrent task execution and live statistic polling.
@@ -251,14 +251,12 @@ impl TorrentOrchestrator {
                             tasks_guard.get(&id).and_then(|c| c.options.get("select-files").cloned())
                         };
 
-                        if let Some(files_str) = files_opt {
-                            if let Some(meta) = &*handle.metadata.load() {
-                                if let Some(files) = &meta.info.files {
+                        if let Some(files_str) = files_opt
+                            && let Some(meta) = &*handle.metadata.load()
+                                && let Some(files) = &meta.info.files {
                                     TorrentFileSelector::cleanup_unselected_files(&dir, &files_str, files);
                                     unselected_cleaned = true;
                                 }
-                            }
-                        }
                     }
 
                     if task_finished && !keep_seeding {
@@ -283,13 +281,11 @@ impl TorrentOrchestrator {
                             tasks_guard.get(&id).and_then(|c| c.options.get("select-files").cloned())
                         };
 
-                        if let Some(files_str) = files_opt {
-                            if let Some(meta) = &*handle.metadata.load() {
-                                if let Some(files) = &meta.info.files {
+                        if let Some(files_str) = files_opt
+                            && let Some(meta) = &*handle.metadata.load()
+                                && let Some(files) = &meta.info.files {
                                     TorrentFileSelector::cleanup_unselected_files(&dir, &files_str, files);
                                 }
-                            }
-                        }
 
                         EventNotifier::emit(&tx, "pin.onDownloadComplete", &id);
                         EventNotifier::emit(&tx, "pin.onBtDownloadComplete", &id);

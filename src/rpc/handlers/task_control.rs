@@ -53,10 +53,10 @@ impl TaskControlHandlers {
         })?;
 
         let mut idx = 0;
-        if let Some(first_str) = params.get(0).and_then(|v| v.as_str()) {
-            if first_str.starts_with("token:") {
-                idx += 1;
-            }
+        if let Some(first_str) = params.get(0).and_then(|v| v.as_str())
+            && first_str.starts_with("token:")
+        {
+            idx += 1;
         }
 
         let video_path_str = params

@@ -7,8 +7,8 @@
 //! - **Where it leads to**: Re-populates the in-memory task database so paused, completed, and interrupted downloads are immediately accessible.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
@@ -37,15 +37,15 @@ impl SessionLoader {
             {
                 let mut global_opts = global_options.write().await;
                 *global_opts = session_data.global_options;
-                if let Some(split_str) = global_opts.get("default-split") {
-                    if let Ok(split) = split_str.parse::<u64>() {
-                        default_split.store(split, Ordering::Relaxed);
-                    }
+                if let Some(split_str) = global_opts.get("default-split")
+                    && let Ok(split) = split_str.parse::<u64>()
+                {
+                    default_split.store(split, Ordering::Relaxed);
                 }
-                if let Some(limit_str) = global_opts.get("max-overall-download-limit") {
-                    if let Ok(limit) = limit_str.parse::<u64>() {
-                        current_limit.store(limit, Ordering::Relaxed);
-                    }
+                if let Some(limit_str) = global_opts.get("max-overall-download-limit")
+                    && let Ok(limit) = limit_str.parse::<u64>()
+                {
+                    current_limit.store(limit, Ordering::Relaxed);
                 }
             }
 

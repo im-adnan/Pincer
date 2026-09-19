@@ -7,7 +7,7 @@
 //! - **Where it leads to**: Removes tasks from memory, safely trashes downloaded files to Recycle Bin, and triggers queue rescheduling.
 
 use super::state::TaskControl;
-use librqbit::{api::TorrentIdOrHash, ManagedTorrent, Session};
+use librqbit::{ManagedTorrent, Session, api::TorrentIdOrHash};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

@@ -11,7 +11,7 @@ pub mod handlers;
 pub mod router;
 pub mod socket;
 
-use axum::{extract::ws::WebSocketUpgrade, response::Response, routing::get, Extension, Router};
+use axum::{Extension, Router, extract::ws::WebSocketUpgrade, response::Response, routing::get};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 

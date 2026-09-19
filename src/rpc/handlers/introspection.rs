@@ -8,7 +8,7 @@
 
 use crate::manager::DownloadManager;
 use crate::models::{PincerFile, PincerServer, PincerServerItem, PincerUri, RPCError, RPCRequest};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Handles JSON-RPC file inspection and URI management endpoints.
@@ -150,16 +150,16 @@ impl IntrospectionHandlers {
 
     /// Handles `pin.changePosition` RPC method for queue position adjustments.
     pub async fn handle_change_position(req: &RPCRequest) -> Result<Value, RPCError> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let has_token = !params_array.is_empty()
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':');
-                let offset = if has_token { 1 } else { 0 };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let has_token = !params_array.is_empty()
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':');
+            let offset = if has_token { 1 } else { 0 };
 
-                if params_array.len() >= offset + 3 {
-                    return Ok(json!(0));
-                }
+            if params_array.len() >= offset + 3 {
+                return Ok(json!(0));
             }
         }
         Err(RPCError {
@@ -173,47 +173,47 @@ impl IntrospectionHandlers {
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let has_token = !params_array.is_empty()
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':');
-                let offset = if has_token { 1 } else { 0 };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let has_token = !params_array.is_empty()
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':');
+            let offset = if has_token { 1 } else { 0 };
 
-                if params_array.len() >= offset + 4 {
-                    let gid = params_array[offset].as_str().unwrap_or("");
-                    let file_index = if let Some(s) = params_array[offset + 1].as_str() {
-                        s.parse::<usize>().unwrap_or(0)
-                    } else {
-                        params_array[offset + 1].as_u64().unwrap_or(0) as usize
-                    };
+            if params_array.len() >= offset + 4 {
+                let gid = params_array[offset].as_str().unwrap_or("");
+                let file_index = if let Some(s) = params_array[offset + 1].as_str() {
+                    s.parse::<usize>().unwrap_or(0)
+                } else {
+                    params_array[offset + 1].as_u64().unwrap_or(0) as usize
+                };
 
-                    let del_uris: Vec<String> = params_array[offset + 2]
-                        .as_array()
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                let del_uris: Vec<String> = params_array[offset + 2]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
 
-                    let add_uris: Vec<String> = params_array[offset + 3]
-                        .as_array()
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                .collect()
-                        })
-                        .unwrap_or_default();
+                let add_uris: Vec<String> = params_array[offset + 3]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
 
-                    return match manager
-                        .change_uri(gid, file_index, del_uris, add_uris)
-                        .await
-                    {
-                        Ok((del, add)) => Ok(json!([del, add])),
-                        Err(e) => Ok(json!({ "error": e })),
-                    };
-                }
+                return match manager
+                    .change_uri(gid, file_index, del_uris, add_uris)
+                    .await
+                {
+                    Ok((del, add)) => Ok(json!([del, add])),
+                    Err(e) => Ok(json!({ "error": e })),
+                };
             }
         }
         Err(RPCError {

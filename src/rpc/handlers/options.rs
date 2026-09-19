@@ -8,7 +8,7 @@
 
 use crate::manager::DownloadManager;
 use crate::models::{RPCError, RPCRequest};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -21,27 +21,27 @@ impl OptionsRpcHandlers {
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let options_val = if params_array.len() >= 2
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':')
-                {
-                    params_array.get(1)
-                } else {
-                    params_array.first()
-                };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let options_val = if params_array.len() >= 2
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                params_array.get(1)
+            } else {
+                params_array.first()
+            };
 
-                if let Some(options_obj) = options_val.and_then(|v| v.as_object()) {
-                    let mut opts = HashMap::new();
-                    for (k, v) in options_obj {
-                        if let Some(s) = v.as_str() {
-                            opts.insert(k.clone(), s.to_string());
-                        }
+            if let Some(options_obj) = options_val.and_then(|v| v.as_object()) {
+                let mut opts = HashMap::new();
+                for (k, v) in options_obj {
+                    if let Some(s) = v.as_str() {
+                        opts.insert(k.clone(), s.to_string());
                     }
-                    manager.change_global_option(opts).await;
-                    return Ok(json!("OK"));
                 }
+                manager.change_global_option(opts).await;
+                return Ok(json!("OK"));
             }
         }
         Err(RPCError {
@@ -64,35 +64,33 @@ impl OptionsRpcHandlers {
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let (gid, options_val) = if params_array.len() >= 3
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':')
-                {
-                    (
-                        params_array.get(1).and_then(|v| v.as_str()),
-                        params_array.get(2),
-                    )
-                } else {
-                    (
-                        params_array.first().and_then(|v| v.as_str()),
-                        params_array.get(1),
-                    )
-                };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let (gid, options_val) = if params_array.len() >= 3
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                (
+                    params_array.get(1).and_then(|v| v.as_str()),
+                    params_array.get(2),
+                )
+            } else {
+                (
+                    params_array.first().and_then(|v| v.as_str()),
+                    params_array.get(1),
+                )
+            };
 
-                if let (Some(gid), Some(options_obj)) =
-                    (gid, options_val.and_then(|v| v.as_object()))
-                {
-                    let mut opts = HashMap::new();
-                    for (k, v) in options_obj {
-                        if let Some(s) = v.as_str() {
-                            opts.insert(k.clone(), s.to_string());
-                        }
+            if let (Some(gid), Some(options_obj)) = (gid, options_val.and_then(|v| v.as_object())) {
+                let mut opts = HashMap::new();
+                for (k, v) in options_obj {
+                    if let Some(s) = v.as_str() {
+                        opts.insert(k.clone(), s.to_string());
                     }
-                    let success = manager.change_option(gid, opts).await;
-                    return Ok(serde_json::to_value(success).unwrap_or(Value::Null));
                 }
+                let success = manager.change_option(gid, opts).await;
+                return Ok(serde_json::to_value(success).unwrap_or(Value::Null));
             }
         }
         Err(RPCError {
@@ -106,21 +104,21 @@ impl OptionsRpcHandlers {
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let gid = if params_array.len() >= 2
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':')
-                {
-                    params_array.get(1).and_then(|v| v.as_str())
-                } else {
-                    params_array.first().and_then(|v| v.as_str())
-                };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let gid = if params_array.len() >= 2
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                params_array.get(1).and_then(|v| v.as_str())
+            } else {
+                params_array.first().and_then(|v| v.as_str())
+            };
 
-                if let Some(gid) = gid {
-                    let opts = manager.get_option(gid).await;
-                    return Ok(serde_json::to_value(opts).unwrap_or(Value::Null));
-                }
+            if let Some(gid) = gid {
+                let opts = manager.get_option(gid).await;
+                return Ok(serde_json::to_value(opts).unwrap_or(Value::Null));
             }
         }
         Err(RPCError {

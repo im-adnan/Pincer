@@ -8,7 +8,7 @@
 
 use crate::manager::DownloadManager;
 use crate::models::{RPCError, RPCRequest};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Handles JSON-RPC session information and result maintenance methods.
@@ -56,21 +56,21 @@ impl SessionRpcHandlers {
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let gid = if params_array.len() >= 2
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':')
-                {
-                    params_array.get(1).and_then(|v| v.as_str())
-                } else {
-                    params_array.first().and_then(|v| v.as_str())
-                };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let gid = if params_array.len() >= 2
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                params_array.get(1).and_then(|v| v.as_str())
+            } else {
+                params_array.first().and_then(|v| v.as_str())
+            };
 
-                if let Some(gid) = gid {
-                    let success = manager.remove_download_result(gid).await;
-                    return Ok(serde_json::to_value(success).unwrap_or(Value::Null));
-                }
+            if let Some(gid) = gid {
+                let success = manager.remove_download_result(gid).await;
+                return Ok(serde_json::to_value(success).unwrap_or(Value::Null));
             }
         }
         Err(RPCError {

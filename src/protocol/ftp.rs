@@ -127,14 +127,14 @@ impl ProtocolAdapter for FtpAdapter {
                 return;
             }
 
-            if start > 0 {
-                if let Err(e) = ftp_stream.resume_transfer(start as usize) {
-                    let _ = tx.blocking_send(Err(PincerError::Protocol(format!(
-                        "FTP resume failed: {}",
-                        e
-                    ))));
-                    return;
-                }
+            if start > 0
+                && let Err(e) = ftp_stream.resume_transfer(start as usize)
+            {
+                let _ = tx.blocking_send(Err(PincerError::Protocol(format!(
+                    "FTP resume failed: {}",
+                    e
+                ))));
+                return;
             }
 
             match ftp_stream.retr_as_stream(&path) {

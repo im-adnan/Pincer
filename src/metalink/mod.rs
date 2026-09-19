@@ -6,8 +6,8 @@
 //! - **Where it comes from**: Called by `rpc::handlers::add_metalink` when Base64 Metalink manifests are submitted.
 //! - **Where it leads to**: Generates `Vec<MetalinkFile>` models used by `manager::TaskSpawner` to register multi-source downloads.
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 /// Parsed file record extracted from a Metalink XML document.
 #[derive(Debug, Clone)]
@@ -91,12 +91,11 @@ pub fn parse_metalink(xml: &str) -> Result<Vec<MetalinkFile>, String> {
             // End of XML element tag
             Ok(Event::End(ref e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                if name == "file" {
-                    if let Some(file) = current_file.take() {
-                        if !file.urls.is_empty() {
-                            files.push(file);
-                        }
-                    }
+                if name == "file"
+                    && let Some(file) = current_file.take()
+                    && !file.urls.is_empty()
+                {
+                    files.push(file);
                 }
                 current_tag.clear();
             }
@@ -110,7 +109,7 @@ pub fn parse_metalink(xml: &str) -> Result<Vec<MetalinkFile>, String> {
                     "XML parse error at position {}: {:?}",
                     reader.buffer_position(),
                     e
-                ))
+                ));
             }
 
             _ => {}

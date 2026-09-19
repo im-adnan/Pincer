@@ -91,10 +91,10 @@ impl UniversalResolver {
         } else {
             builder = builder.user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         }
-        if let Some(proxy_url) = global_opts.get("all-proxy").filter(|s| !s.is_empty()) {
-            if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
-                builder = builder.proxy(proxy);
-            }
+        if let Some(proxy_url) = global_opts.get("all-proxy").filter(|s| !s.is_empty())
+            && let Ok(proxy) = reqwest::Proxy::all(proxy_url)
+        {
+            builder = builder.proxy(proxy);
         }
         let client = builder.build().map_err(|e| e.to_string())?;
 

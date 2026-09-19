@@ -64,7 +64,7 @@ impl TorrentResolver {
         session: &Arc<Session>,
         base64_str: &str,
     ) -> Result<ResolveResponse, String> {
-        use base64::{engine::general_purpose, Engine as _};
+        use base64::{Engine as _, engine::general_purpose};
         let decoded = general_purpose::STANDARD
             .decode(base64_str.trim())
             .map_err(|e| format!("Invalid base64: {:?}", e))?;

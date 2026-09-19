@@ -8,7 +8,7 @@
 
 use crate::manager::DownloadManager;
 use crate::models::{RPCError, RPCRequest};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Handles JSON-RPC metadata resolution endpoints (`resolveUrl`, `resolveTorrent`).
@@ -20,23 +20,23 @@ impl ResolveHandlers {
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let url = if params_array.len() >= 2
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':')
-                {
-                    params_array.get(1).and_then(|v| v.as_str())
-                } else {
-                    params_array.first().and_then(|v| v.as_str())
-                };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let url = if params_array.len() >= 2
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                params_array.get(1).and_then(|v| v.as_str())
+            } else {
+                params_array.first().and_then(|v| v.as_str())
+            };
 
-                if let Some(url) = url {
-                    return match manager.resolve_url(url.to_string()).await {
-                        Ok(res) => Ok(serde_json::to_value(res).unwrap_or(Value::Null)),
-                        Err(e) => Ok(json!({ "error": e })),
-                    };
-                }
+            if let Some(url) = url {
+                return match manager.resolve_url(url.to_string()).await {
+                    Ok(res) => Ok(serde_json::to_value(res).unwrap_or(Value::Null)),
+                    Err(e) => Ok(json!({ "error": e })),
+                };
             }
         }
         Err(RPCError {
@@ -50,23 +50,23 @@ impl ResolveHandlers {
         req: &RPCRequest,
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let base64_str = if params_array.len() >= 2
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':')
-                {
-                    params_array.get(1).and_then(|v| v.as_str())
-                } else {
-                    params_array.first().and_then(|v| v.as_str())
-                };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let base64_str = if params_array.len() >= 2
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                params_array.get(1).and_then(|v| v.as_str())
+            } else {
+                params_array.first().and_then(|v| v.as_str())
+            };
 
-                if let Some(base64_str) = base64_str {
-                    return match manager.resolve_torrent_base64(base64_str.to_string()).await {
-                        Ok(res) => Ok(serde_json::to_value(res).unwrap_or(Value::Null)),
-                        Err(e) => Ok(json!({ "error": e })),
-                    };
-                }
+            if let Some(base64_str) = base64_str {
+                return match manager.resolve_torrent_base64(base64_str.to_string()).await {
+                    Ok(res) => Ok(serde_json::to_value(res).unwrap_or(Value::Null)),
+                    Err(e) => Ok(json!({ "error": e })),
+                };
             }
         }
         Err(RPCError {

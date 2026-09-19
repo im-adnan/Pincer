@@ -46,8 +46,8 @@ impl WebSocketHandler {
                             _ => None,
                         };
 
-                        if let Some(text) = text {
-                            if let Ok(req) = serde_json::from_str::<RPCRequest>(&text) {
+                        if let Some(text) = text
+                            && let Ok(req) = serde_json::from_str::<RPCRequest>(&text) {
                                 // Check secret token authentication
                                 if !RpcAuthenticator::is_authenticated(&req, secret.as_deref()) {
                                     let error_res = RpcAuthenticator::unauthorized_response(&req.id);
@@ -61,7 +61,6 @@ impl WebSocketHandler {
                                     let _ = sender.send(Message::Text(json_res)).await;
                                 }
                             }
-                        }
                     } else {
                         break;
                     }

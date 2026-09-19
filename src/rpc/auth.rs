@@ -23,14 +23,14 @@ impl RpcAuthenticator {
             _ => return true,
         };
 
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                if !params_array.is_empty() && params_array[0].is_string() {
-                    let token_str = params_array[0].as_str().unwrap();
-                    if token_str == format!("token:{}", secret) {
-                        return true;
-                    }
-                }
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+            && !params_array.is_empty()
+            && params_array[0].is_string()
+        {
+            let token_str = params_array[0].as_str().unwrap();
+            if token_str == format!("token:{}", secret) {
+                return true;
             }
         }
 

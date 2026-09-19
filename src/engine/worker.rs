@@ -10,8 +10,8 @@ use futures::StreamExt;
 use std::fs::File;
 #[cfg(unix)]
 use std::os::unix::fs::FileExt;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;

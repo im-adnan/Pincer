@@ -6,9 +6,9 @@
 //! - **Where it comes from**: Called by `engine::DownloadWorker` inside the byte streaming loop.
 //! - **Where it leads to**: Inserts async `tokio::time::sleep()` pauses to shape download throughput without packet dropping.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::time::{sleep, Duration, Instant};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::time::{Duration, Instant, sleep};
 
 /// RAII guard that automatically increments `active_threads` on creation and decrements on drop.
 pub struct ThreadGuard {

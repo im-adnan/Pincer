@@ -8,8 +8,8 @@
 
 use super::state::TaskControl;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 
 /// Manages runtime option changes and bandwidth speed mode profiles.
@@ -46,19 +46,18 @@ impl OptionsManager {
             }
         }
 
-        if let Some(limit_str) = options.get("max-overall-download-limit") {
-            if let Ok(limit) = limit_str.parse::<u64>() {
-                current_limit.store(limit, Ordering::Relaxed);
-            }
+        if let Some(limit_str) = options.get("max-overall-download-limit")
+            && let Ok(limit) = limit_str.parse::<u64>()
+        {
+            current_limit.store(limit, Ordering::Relaxed);
         }
 
         if let Some(split_str) = options
             .get("split")
             .or_else(|| options.get("default-split"))
+            && let Ok(split) = split_str.parse::<u64>()
         {
-            if let Ok(split) = split_str.parse::<u64>() {
-                default_split.store(split.min(99), Ordering::Relaxed);
-            }
+            default_split.store(split.min(99), Ordering::Relaxed);
         }
 
         let mut global_opts = global_options.write().await;

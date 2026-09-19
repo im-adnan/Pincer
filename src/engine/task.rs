@@ -7,8 +7,8 @@
 //! - **Where it leads to**: Returns active progress receivers and metadata, handing off execution to the caller's monitoring loop.
 
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 

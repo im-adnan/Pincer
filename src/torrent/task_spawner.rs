@@ -54,7 +54,7 @@ impl TorrentTaskSpawner {
                 (name, info_hash, Some(url.to_string()))
             }
             AddTorrent::TorrentFileBytes(bytes) => {
-                match librqbit::torrent_from_bytes::<&[u8]>(bytes.as_ref()) { Ok(t) => {
+                if let Ok(t) = librqbit::torrent_from_bytes::<&[u8]>(bytes.as_ref()) {
                     let name = t
                         .info
                         .name
@@ -63,9 +63,9 @@ impl TorrentTaskSpawner {
                         .unwrap_or_else(|| "Torrent File".to_string());
                     let info_hash = Some(t.info_hash.as_string());
                     (name, info_hash, None)
-                } _ => {
+                } else {
                     ("Torrent File".to_string(), None, None)
-                }}
+                }
             }
         }
     }

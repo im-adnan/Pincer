@@ -8,7 +8,7 @@
 
 use crate::manager::DownloadManager;
 use crate::models::{RPCError, RPCRequest, RPCResponse};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 /// Handles system-level reflection, batch multicall executions, and graceful server shutdown.
@@ -97,45 +97,45 @@ impl SystemRpcHandlers {
         F: Fn(RPCRequest, Arc<DownloadManager>) -> Fut,
         Fut: std::future::Future<Output = RPCResponse<Value>>,
     {
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                let multicall_array = if params_array.len() >= 2
-                    && params_array[0].is_string()
-                    && params_array[0].as_str().unwrap_or("").contains(':')
-                {
-                    params_array.get(1).and_then(|v| v.as_array())
-                } else {
-                    params_array.first().and_then(|v| v.as_array())
-                };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+        {
+            let multicall_array = if params_array.len() >= 2
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                params_array.get(1).and_then(|v| v.as_array())
+            } else {
+                params_array.first().and_then(|v| v.as_array())
+            };
 
-                if let Some(calls) = multicall_array {
-                    let mut results = Vec::new();
-                    for call in calls {
-                        if let Some(call_obj) = call.as_object() {
-                            let method_name = call_obj
-                                .get("methodName")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let call_params = call_obj.get("params").cloned();
+            if let Some(calls) = multicall_array {
+                let mut results = Vec::new();
+                for call in calls {
+                    if let Some(call_obj) = call.as_object() {
+                        let method_name = call_obj
+                            .get("methodName")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let call_params = call_obj.get("params").cloned();
 
-                            let sub_req = RPCRequest {
-                                jsonrpc: "2.0".to_string(),
-                                id: "1".to_string(),
-                                method: method_name,
-                                params: call_params,
-                            };
+                        let sub_req = RPCRequest {
+                            jsonrpc: "2.0".to_string(),
+                            id: "1".to_string(),
+                            method: method_name,
+                            params: call_params,
+                        };
 
-                            let res = dispatch_fn(sub_req, manager.clone()).await;
-                            if let Some(r) = res.result {
-                                results.push(json!([r]));
-                            } else if let Some(e) = res.error {
-                                results.push(serde_json::to_value(e).unwrap_or(Value::Null));
-                            }
+                        let res = dispatch_fn(sub_req, manager.clone()).await;
+                        if let Some(r) = res.result {
+                            results.push(json!([r]));
+                        } else if let Some(e) = res.error {
+                            results.push(serde_json::to_value(e).unwrap_or(Value::Null));
                         }
                     }
-                    return Ok(serde_json::to_value(results).unwrap_or(Value::Null));
                 }
+                return Ok(serde_json::to_value(results).unwrap_or(Value::Null));
             }
         }
         Err(RPCError {

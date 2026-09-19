@@ -8,7 +8,7 @@
 
 use crate::manager::DownloadManager;
 use crate::models::{RPCError, RPCRequest};
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,50 +23,49 @@ impl AddTorrentHandler {
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
         let mut return_ids = Vec::new();
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                if !params_array.is_empty() {
-                    let (base64_val, options_val) = if params_array.len() >= 2
-                        && params_array[0].is_string()
-                        && params_array[0].as_str().unwrap_or("").contains(':')
-                    {
-                        (&params_array[1], params_array.get(2))
-                    } else {
-                        (&params_array[0], params_array.get(1))
-                    };
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+            && !params_array.is_empty()
+        {
+            let (base64_val, options_val) = if params_array.len() >= 2
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                (&params_array[1], params_array.get(2))
+            } else {
+                (&params_array[0], params_array.get(1))
+            };
 
-                    if let Some(base64_str) = base64_val.as_str() {
-                        if let Ok(decoded) = general_purpose::STANDARD.decode(base64_str) {
-                            let options = options_val.and_then(|v| v.as_object());
-                            let default_dir = std::env::var("HOME")
-                                .map(|h| format!("{}/Downloads", h))
-                                .unwrap_or_else(|_| "/tmp".to_string());
-                            let dir = options
-                                .and_then(|o| o.get("dir"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or(&default_dir)
-                                .to_string();
+            if let Some(base64_str) = base64_val.as_str()
+                && let Ok(decoded) = general_purpose::STANDARD.decode(base64_str)
+            {
+                let options = options_val.and_then(|v| v.as_object());
+                let default_dir = std::env::var("HOME")
+                    .map(|h| format!("{}/Downloads", h))
+                    .unwrap_or_else(|_| "/tmp".to_string());
+                let dir = options
+                    .and_then(|o| o.get("dir"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&default_dir)
+                    .to_string();
 
-                            let mut opts_map = HashMap::new();
-                            if let Some(opts) = options {
-                                for (k, v) in opts.iter() {
-                                    if let Some(s) = v.as_str() {
-                                        opts_map.insert(k.clone(), s.to_string());
-                                    }
-                                }
-                            }
-
-                            let current_id = uuid::Uuid::new_v4().to_string();
-                            if librqbit::torrent_from_bytes::<&[u8]>(&decoded).is_ok() {
-                                let torrent_source = librqbit::AddTorrent::from_bytes(decoded);
-                                if let Ok(task_id) = manager
-                                    .spawn_torrent_task(current_id, torrent_source, dir, opts_map)
-                                    .await
-                                {
-                                    return_ids.push(task_id);
-                                }
-                            }
+                let mut opts_map = HashMap::new();
+                if let Some(opts) = options {
+                    for (k, v) in opts.iter() {
+                        if let Some(s) = v.as_str() {
+                            opts_map.insert(k.clone(), s.to_string());
                         }
+                    }
+                }
+
+                let current_id = uuid::Uuid::new_v4().to_string();
+                if librqbit::torrent_from_bytes::<&[u8]>(&decoded).is_ok() {
+                    let torrent_source = librqbit::AddTorrent::from_bytes(decoded);
+                    if let Ok(task_id) = manager
+                        .spawn_torrent_task(current_id, torrent_source, dir, opts_map)
+                        .await
+                    {
+                        return_ids.push(task_id);
                     }
                 }
             }

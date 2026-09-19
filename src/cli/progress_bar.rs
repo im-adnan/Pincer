@@ -53,7 +53,8 @@ impl TerminalProgressBar {
         // Print formatted 2-line display:
         // \r\x1b[2K: Carriage return and clear line
         // \x1b[1A: Move cursor up 1 line to allow smooth overwriting on next render
-        print!("\r\x1b[2K  \x1b[1;36m{}\x1b[0m \x1b[1;32m{:>5.1}%\x1b[0m | \x1b[1;37m{}/{}\x1b[0m | \x1b[1;33m{}/s\x1b[0m | \x1b[1;35mETA: {}\x1b[0m\n\x1b[2K  \x1b[90mThreads:{}\x1b[0m\x1b[1A",
+        print!(
+            "\r\x1b[2K  \x1b[1;36m{}\x1b[0m \x1b[1;32m{:>5.1}%\x1b[0m | \x1b[1;37m{}/{}\x1b[0m | \x1b[1;33m{}/s\x1b[0m | \x1b[1;35mETA: {}\x1b[0m\n\x1b[2K  \x1b[90mThreads:{}\x1b[0m\x1b[1A",
             bar,
             percent,
             format_bytes(completed),

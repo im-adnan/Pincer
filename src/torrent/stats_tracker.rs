@@ -83,7 +83,7 @@ impl TorrentStatsTracker {
         };
 
         // Construct TorrentInfo metadata
-        let bittorrent = match &*handle.metadata.load() { Some(meta) => {
+        let bittorrent = if let Some(meta) = &*handle.metadata.load() {
             let mode = if meta.info.files.is_some() {
                 "multi"
             } else {
@@ -106,9 +106,9 @@ impl TorrentStatsTracker {
                 mode: mode.to_string(),
                 info: TorrentInfoInner { name },
             })
-        } _ => {
+        } else {
             None
-        }};
+        };
 
         TorrentSnapshot {
             total_bytes,

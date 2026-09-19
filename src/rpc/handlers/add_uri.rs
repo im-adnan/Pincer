@@ -30,116 +30,103 @@ impl AddUriHandler {
         manager: &Arc<DownloadManager>,
     ) -> Result<Value, RPCError> {
         let mut return_ids = Vec::new();
-        if let Some(params) = &req.params {
-            if let Some(params_array) = params.as_array() {
-                if params_array.len() >= 2 {
-                    let (uris_val, options_val) = if params_array.len() >= 3
-                        && params_array[0].is_string()
-                        && params_array[0].as_str().unwrap_or("").contains(':')
+        if let Some(params) = &req.params
+            && let Some(params_array) = params.as_array()
+            && params_array.len() >= 2
+        {
+            let (uris_val, options_val) = if params_array.len() >= 3
+                && params_array[0].is_string()
+                && params_array[0].as_str().unwrap_or("").contains(':')
+            {
+                (&params_array[1], &params_array[2])
+            } else {
+                (&params_array[0], &params_array[1])
+            };
+
+            if let (Some(uris), Some(options)) = (uris_val.as_array(), options_val.as_object())
+                && let Some(first_uri) = uris.first().and_then(|v| v.as_str())
+            {
+                let expanded_urls = crate::common::expand_uris(first_uri);
+                let explicit_out = options.get("out").and_then(|v| v.as_str());
+
+                for url in expanded_urls {
+                    let url = url.trim().to_string();
+                    let current_id = uuid::Uuid::new_v4().to_string();
+                    return_ids.push(current_id.clone());
+
+                    let default_dir = std::env::var("HOME")
+                        .map(|h| format!("{}/Downloads", h))
+                        .unwrap_or_else(|_| "/tmp".to_string());
+
+                    let dir = options
+                        .get("dir")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&default_dir)
+                        .to_string();
+
+                    let mut opts_map = HashMap::new();
+                    for (k, v) in options.iter() {
+                        if let Some(s) = v.as_str() {
+                            opts_map.insert(k.clone(), s.to_string());
+                        }
+                    }
+
+                    let url_lower = url.to_lowercase();
+                    let is_forced_torrent =
+                        options.get("file-type").and_then(|v| v.as_str()) == Some("torrent");
+                    if url_lower.starts_with("magnet:?")
+                        || url_lower.contains(".torrent")
+                        || is_forced_torrent
                     {
-                        (&params_array[1], &params_array[2])
-                    } else {
-                        (&params_array[0], &params_array[1])
-                    };
+                        let torrent_source = librqbit::AddTorrent::from_url(url.clone());
+                        let _ = manager
+                            .spawn_torrent_task(current_id, torrent_source, dir, opts_map)
+                            .await;
+                        continue;
+                    }
 
-                    if let (Some(uris), Some(options)) =
-                        (uris_val.as_array(), options_val.as_object())
-                    {
-                        if let Some(first_uri) = uris.first().and_then(|v| v.as_str()) {
-                            let expanded_urls = crate::common::expand_uris(first_uri);
-                            let explicit_out = options.get("out").and_then(|v| v.as_str());
+                    let filename = explicit_out.map(|s| s.to_string()).unwrap_or_else(|| {
+                        url.split('/')
+                            .next_back()
+                            .unwrap_or("download.bin")
+                            .split('?')
+                            .next()
+                            .unwrap_or("download.bin")
+                            .to_string()
+                    });
 
-                            for url in expanded_urls {
-                                let url = url.trim().to_string();
-                                let current_id = uuid::Uuid::new_v4().to_string();
-                                return_ids.push(current_id.clone());
+                    let threads = options
+                        .get("split")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .unwrap_or_else(|| {
+                            manager
+                                .default_split
+                                .load(std::sync::atomic::Ordering::Relaxed)
+                                as usize
+                        });
 
-                                let default_dir = std::env::var("HOME")
-                                    .map(|h| format!("{}/Downloads", h))
-                                    .unwrap_or_else(|_| "/tmp".to_string());
-
-                                let dir = options
-                                    .get("dir")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or(&default_dir)
-                                    .to_string();
-
-                                let mut opts_map = HashMap::new();
-                                for (k, v) in options.iter() {
-                                    if let Some(s) = v.as_str() {
-                                        opts_map.insert(k.clone(), s.to_string());
-                                    }
-                                }
-
-                                let url_lower = url.to_lowercase();
-                                let is_forced_torrent =
-                                    options.get("file-type").and_then(|v| v.as_str())
-                                        == Some("torrent");
-                                if url_lower.starts_with("magnet:?")
-                                    || url_lower.contains(".torrent")
-                                    || is_forced_torrent
-                                {
-                                    let torrent_source =
-                                        librqbit::AddTorrent::from_url(url.clone());
-                                    let _ = manager
-                                        .spawn_torrent_task(
-                                            current_id,
-                                            torrent_source,
-                                            dir,
-                                            opts_map,
-                                        )
-                                        .await;
-                                    continue;
-                                }
-
-                                let filename =
-                                    explicit_out.map(|s| s.to_string()).unwrap_or_else(|| {
-                                        url.split('/')
-                                            .next_back()
-                                            .unwrap_or("download.bin")
-                                            .split('?')
-                                            .next()
-                                            .unwrap_or("download.bin")
-                                            .to_string()
-                                    });
-
-                                let threads = options
-                                    .get("split")
-                                    .and_then(|v| v.as_str())
-                                    .and_then(|s| s.parse::<usize>().ok())
-                                    .unwrap_or_else(|| {
-                                        manager
-                                            .default_split
-                                            .load(std::sync::atomic::Ordering::Relaxed)
-                                            as usize
-                                    });
-
-                                let mut headers = Vec::new();
-                                if let Some(header_str) =
-                                    options.get("header").and_then(|v| v.as_str())
-                                {
-                                    for line in header_str.split('\n') {
-                                        if !line.trim().is_empty() {
-                                            headers.push(line.trim().to_string());
-                                        }
-                                    }
-                                }
-
-                                manager
-                                    .spawn_task(
-                                        current_id,
-                                        vec![url],
-                                        filename,
-                                        dir,
-                                        threads,
-                                        0,
-                                        headers,
-                                        None,
-                                    )
-                                    .await;
+                    let mut headers = Vec::new();
+                    if let Some(header_str) = options.get("header").and_then(|v| v.as_str()) {
+                        for line in header_str.split('\n') {
+                            if !line.trim().is_empty() {
+                                headers.push(line.trim().to_string());
                             }
                         }
                     }
+
+                    manager
+                        .spawn_task(
+                            current_id,
+                            vec![url],
+                            filename,
+                            dir,
+                            threads,
+                            0,
+                            headers,
+                            None,
+                        )
+                        .await;
                 }
             }
         }

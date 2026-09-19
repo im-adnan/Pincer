@@ -9,10 +9,10 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::{BoxStream, StreamExt};
-use reqwest::header::{
-    HeaderMap, HeaderName, HeaderValue, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, RANGE,
-};
 use reqwest::Client;
+use reqwest::header::{
+    CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, RANGE,
+};
 use std::str::FromStr;
 
 use super::{ProtocolAdapter, ResolvedMetadata};
@@ -43,13 +43,13 @@ impl HttpAdapter {
     fn build_headers(headers: &[String]) -> HeaderMap {
         let mut map = HeaderMap::new();
         for h in headers {
-            if let Some((k, v)) = h.split_once(':') {
-                if let (Ok(name), Ok(val)) = (
+            if let Some((k, v)) = h.split_once(':')
+                && let (Ok(name), Ok(val)) = (
                     HeaderName::from_str(k.trim()),
                     HeaderValue::from_str(v.trim()),
-                ) {
-                    map.insert(name, val);
-                }
+                )
+            {
+                map.insert(name, val);
             }
         }
         map

@@ -106,29 +106,13 @@ impl CliArgs {
                 // Version flag: -v, -V, --version
                 Short('v') | Short('V') | Long("version") => {
                     println!("pincer {}", env!("CARGO_PKG_VERSION"));
+                    println!("To know more, use: pincer -h, pincer --help, or pincer --man");
                     std::process::exit(0);
                 }
 
-                // Help flag: -h, --help
-                Short('h') | Long("help") => {
-                    println!("Pincer {}", env!("CARGO_PKG_VERSION"));
-                    println!("Usage: pincer [OPTIONS] [URL | .torrent | .metalink | magnet:?]");
-                    println!();
-                    println!("Options:");
-                    println!("  -p, --port, --rpc-listen-port <PORT>  Set RPC WebSocket listener port (default: 6800)");
-                    println!("      --rpc-secret <SECRET>             Set RPC authentication secret token");
-                    println!("  -D, --daemon                          Run as background daemon");
-                    println!("      --enable-rpc                      Enable JSON-RPC server mode");
-                    println!("  -d, --dir <DIR>                       Download output directory (default: ~/Downloads)");
-                    println!("  -o, --out <FILENAME>                  Output filename");
-                    println!("  -s, --split <N>                       Number of connection threads (default: 4)");
-                    println!("  -f, --format <FMT>                    Transcode output format (mp4, mp3, pdf, etc.)");
-                    println!(
-                        "      --max-download-limit <SPEED>      Set speed limit (e.g. 5M, 500K)"
-                    );
-                    println!("  -l, --log                             Enable ANSI terminal progress rendering");
-                    println!("  -v, --version                         Print version information");
-                    println!("  -h, --help                            Print help message");
+                // Help flag: -h, --help, --man
+                Short('h') | Long("help") | Long("man") => {
+                    println!("{}", include_str!("../../docs/03-cli-reference.md"));
                     std::process::exit(0);
                 }
 

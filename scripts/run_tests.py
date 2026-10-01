@@ -40,6 +40,38 @@ def find_and_kill_pincer():
     except Exception as e:
         print(f"\x1b[31mFailed to check/kill running Pincer processes: {e}\x1b[0m")
 
+def ensure_test_dependencies():
+    try:
+        import websockets
+        return
+    except ImportError:
+        pass
+
+    print("\x1b[33mMissing required test dependency 'websockets'. Attempting to install...\x1b[0m")
+    uv = shutil.which("uv") or ("/opt/homebrew/bin/uv" if os.path.exists("/opt/homebrew/bin/uv") else None)
+    if uv:
+        res = subprocess.run([uv, "pip", "install", "--python", sys.executable, "websockets"], capture_output=True, text=True)
+        if res.returncode == 0:
+            print("\x1b[1;32m✔ 'websockets' installed successfully via uv!\x1b[0m")
+            return
+
+    # Fallback to pip install --user
+    res = subprocess.run([sys.executable, "-m", "pip", "install", "--user", "websockets"], capture_output=True, text=True)
+    if res.returncode == 0:
+        print("\x1b[1;32m✔ 'websockets' installed successfully via pip --user!\x1b[0m")
+        import site
+        from importlib import reload
+        reload(site)
+        return
+
+    # Fallback to standard pip install
+    res = subprocess.run([sys.executable, "-m", "pip", "install", "websockets"], capture_output=True, text=True)
+    if res.returncode == 0:
+        print("\x1b[1;32m✔ 'websockets' installed successfully via pip!\x1b[0m")
+        return
+
+    print("\x1b[1;33m⚠️ Could not auto-install websockets. If tests fail, run: pip3 install websockets\x1b[0m")
+
 def main():
     # Find repository root (parent of tests folder)
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,6 +80,9 @@ def main():
     ci_mode = "--ci" in sys.argv
 
     print_step("Pincer Test Runner: Preparing environment...", "🚀")
+
+    # 0. Ensure test dependencies (e.g. websockets) are present
+    ensure_test_dependencies()
 
     # 1. Kill any port conflicts
     find_and_kill_pincer()

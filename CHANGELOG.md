@@ -1,5 +1,6 @@
 # Changelog
 
+- **2026-10-09** : `pending` - fix: resolve clippy doc_lazy_continuation lint in manager::resolve_download_dir
 - **2026-09-08** : `8ea470d` - feat: update test cleanup script to remove session files upon completion
 - **2026-09-08** : `ee54fbf` - refactor: enhance test runner output with ANSI styling and recursive temporary directory management
 - **2026-09-08** : `5f488e0` - refactor: modularize RPC test suite and modernize CLI code formatting

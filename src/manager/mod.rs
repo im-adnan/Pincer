@@ -125,6 +125,7 @@ impl DownloadManager {
     /// 1. Uses explicit `dir` if supplied and non-empty.
     /// 2. Otherwise uses configured `global_options["dir"]`.
     /// 3. Otherwise defaults to `$HOME/Downloads/Grabbit` (or `/tmp`).
+    ///
     /// Also ensures that intermediate directories exist on disk.
     pub async fn resolve_download_dir(&self, explicit_dir: Option<&str>) -> String {
         let dir = if let Some(d) = explicit_dir.filter(|s| !s.trim().is_empty()) {

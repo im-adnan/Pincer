@@ -23,7 +23,7 @@ pub struct CliArgs {
     pub url: Option<String>,
     /// Optional custom output filename.
     pub out: Option<String>,
-    /// Destination directory for saved downloads (defaults to `~/Downloads`).
+    /// Destination directory for saved downloads (defaults to `~/Downloads/Grabbit`).
     pub dir: String,
     /// Number of concurrent connection threads for downloading (defaults to 4).
     pub split: usize,
@@ -47,9 +47,9 @@ impl CliArgs {
         let mut url = None;
         let mut out = None;
 
-        // Default to ~/Downloads or current directory if HOME is unset.
+        // Default to ~/Downloads/Grabbit or current directory if HOME is unset.
         let mut dir = std::env::var("HOME")
-            .map(|h| format!("{}/Downloads", h))
+            .map(|h| format!("{}/Downloads/Grabbit", h))
             .unwrap_or_else(|_| ".".to_string());
         let mut split = 4;
         let mut log = false;
@@ -125,7 +125,7 @@ impl CliArgs {
                     println!("  -D, --daemon                          Run as background daemon");
                     println!("      --enable-rpc                      Enable JSON-RPC server mode");
                     println!(
-                        "  -d, --dir <DIR>                       Download output directory (default: ~/Downloads)"
+                        "  -d, --dir <DIR>                       Download output directory (default: ~/Downloads/Grabbit)"
                     );
                     println!("  -o, --out <FILENAME>                  Output filename");
                     println!(

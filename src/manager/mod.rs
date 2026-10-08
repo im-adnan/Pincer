@@ -121,6 +121,28 @@ impl DownloadManager {
         UniqueNameGenerator::generate_unique(filename, excluding_gid, &tasks_guard)
     }
 
+    /// Resolves the destination download directory:
+    /// 1. Uses explicit `dir` if supplied and non-empty.
+    /// 2. Otherwise uses configured `global_options["dir"]`.
+    /// 3. Otherwise defaults to `$HOME/Downloads/Grabbit` (or `/tmp`).
+    /// Also ensures that intermediate directories exist on disk.
+    pub async fn resolve_download_dir(&self, explicit_dir: Option<&str>) -> String {
+        let dir = if let Some(d) = explicit_dir.filter(|s| !s.trim().is_empty()) {
+            d.to_string()
+        } else {
+            let global = self.global_options.read().await;
+            if let Some(g) = global.get("dir").filter(|s| !s.trim().is_empty()) {
+                g.clone()
+            } else {
+                std::env::var("HOME")
+                    .map(|h| format!("{}/Downloads/Grabbit", h))
+                    .unwrap_or_else(|_| "/tmp".to_string())
+            }
+        };
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }
+
     /// Registers a new direct download task and triggers the queue scheduler.
     #[allow(clippy::too_many_arguments)]
     pub async fn spawn_task(

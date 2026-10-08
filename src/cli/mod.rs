@@ -44,6 +44,15 @@ impl CliDispatcher {
             }
         };
 
+        // Seed initial CLI dir into global options if not already populated from saved session
+        {
+            let mut opts = manager.global_options.write().await;
+            if !opts.contains_key("dir") || opts.get("dir").map(|s| s.trim().is_empty()).unwrap_or(true) {
+                opts.insert("dir".to_string(), args.dir.clone());
+            }
+            let _ = std::fs::create_dir_all(&args.dir);
+        }
+
         // Step 2: Handle daemonization if requested.
         if args.daemon {
             DaemonManager::spawn_background_process();

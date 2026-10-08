@@ -41,14 +41,8 @@ impl AddMetalinkHandler {
                 && let Ok(metalink_files) = crate::metalink::parse_metalink(&xml_str)
             {
                 let options = options_val.and_then(|v| v.as_object());
-                let default_dir = std::env::var("HOME")
-                    .map(|h| format!("{}/Downloads", h))
-                    .unwrap_or_else(|_| "/tmp".to_string());
-                let dir = options
-                    .and_then(|o| o.get("dir"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(&default_dir)
-                    .to_string();
+                let explicit_dir = options.and_then(|o| o.get("dir")).and_then(|v| v.as_str());
+                let dir = manager.resolve_download_dir(explicit_dir).await;
 
                 let split_default = manager
                     .default_split

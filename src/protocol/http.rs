@@ -34,12 +34,13 @@ impl HttpAdapter {
     pub fn new() -> Self {
         let client = Client::builder()
             .redirect(reqwest::redirect::Policy::limited(10))
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
             .build()
             .unwrap_or_else(|_| Client::new());
         Self { client }
     }
 
-    /// Converts an array of "Key: Value" strings into a `reqwest::header::HeaderMap`.
+    /// Converts an array of \"Key: Value\" strings into a `reqwest::header::HeaderMap`.
     fn build_headers(headers: &[String]) -> HeaderMap {
         let mut map = HeaderMap::new();
         for h in headers {
@@ -75,6 +76,14 @@ impl ProtocolAdapter for HttpAdapter {
 
         let status = resp.status();
         let headers = resp.headers();
+
+        // Check for HTTP errors on the probe request
+        if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {
+            return Err(PincerError::Protocol(format!(
+                "HTTP metadata request returned error status: {}",
+                status
+            )));
+        }
 
         // Strict range support detection: Server MUST respond with 206 Partial Content to Range: bytes=0-0
         let resumable = status == reqwest::StatusCode::PARTIAL_CONTENT;

@@ -99,14 +99,7 @@ impl AddUriHandler {
                                 as usize
                         });
 
-                    let mut headers = Vec::new();
-                    if let Some(header_str) = options.get("header").and_then(|v| v.as_str()) {
-                        for line in header_str.split('\n') {
-                            if !line.trim().is_empty() {
-                                headers.push(line.trim().to_string());
-                            }
-                        }
-                    }
+                    let headers = super::extract_headers(options);
 
                     manager
                         .spawn_task(

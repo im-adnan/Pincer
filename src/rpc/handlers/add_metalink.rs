@@ -55,17 +55,7 @@ impl AddMetalinkHandler {
                     .unwrap_or(split_default);
 
                 let explicit_out = options.and_then(|o| o.get("out")).and_then(|v| v.as_str());
-                let mut headers = Vec::new();
-                if let Some(header_str) = options
-                    .and_then(|o| o.get("header"))
-                    .and_then(|v| v.as_str())
-                {
-                    for line in header_str.split('\n') {
-                        if !line.trim().is_empty() {
-                            headers.push(line.trim().to_string());
-                        }
-                    }
-                }
+                let headers = options.map(super::extract_headers).unwrap_or_default();
 
                 for (i, mfile) in metalink_files.into_iter().enumerate() {
                     let current_id = uuid::Uuid::new_v4().to_string();
